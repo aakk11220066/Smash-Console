@@ -29,11 +29,12 @@ private:
     std::vector<ProcessControlBlock*> waitingHeap;
 
     SmallShell& smash;
+    job_id_t maxIndex = 0;
 
 public:
     JobsManager(SmallShell& smash);
     ~JobsManager() = default;
-    void addJob(const Command& cmd); //TODO: call removeFinishedJobs(), push_heap
+    void addJob(const Command& cmd, pid_t pid);
     void printJobsList();
     void killAllJobs();
     void removeFinishedJobs();
@@ -89,11 +90,11 @@ public:
 class Command {
 protected:
     std::vector<const std::string> args;
-
     SmallShell* const smash = nullptr;
 
 public:
     bool invalid = false;
+    std::string cmd_line;
 
 public:
     Command(std::string cmd_line, SmallShell* smash);

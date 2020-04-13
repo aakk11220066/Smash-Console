@@ -165,7 +165,7 @@ bool SmallShell::sendSignal(signal_t signum, job_id_t jobId) {
     return true;
 }
 
-Command::Command(string cmd_line, SmallShell* smash) : smash(smash) {
+Command::Command(string cmd_line, SmallShell* smash) : smash(smash), cmd_line(cmd_line) {
     const unsigned int MAX_ARGS = 20;
     char** argsArray = (char**) malloc(MAX_ARGS*sizeof(char*));
     const unsigned short numArgs = _parseCommandLine(_removeBackgroundSign(cmd_line), argsArray);
@@ -316,6 +316,14 @@ void JobsManager::killAllJobs() {
     }
 }
 
+void JobsManager::addJob(const Command &cmd, pid_t pid) {
+    removeFinishedJobs();
+
+    ++maxIndex;
+    processes.insert(pair<job_id_t, ProcessControlBlock>(maxIndex,
+            ProcessControlBlock(maxIndex, pid, cmd.cmd_line)));
+}
+
 KillCommand::KillCommand(string cmd_line, SmallShell* smash) : BuiltInCommand(cmd_line, smash){
     try{
         if ((args.size() -1 != 2) || (args[1][0] != '-')) throw std::invalid_argument("Bad args");
@@ -421,7 +429,11 @@ void ExternalCommand::execute() {
     if (pid == 0){
         if (setpgrp() < 0) INVALIDATE("smash error: setpgrp failed");
 
-        EXEC("/bin/bash", args.);
+        char** argsArray =
+                (char**)malloc(args.size()*sizeof(const char*)); //TODO: memory leak?
+        for (unsigned short i=0; i<args.size(); ++i) argsArray[i] =
+                const_cast<char*>(args[i].c_str()); //TODO: memory leak?
+        EXEC("/bin/bash", argsArray);
     }
     else{
         //if !backgroundRequest then wait for son
@@ -430,7 +442,7 @@ void ExternalCommand::execute() {
             if (waitStatus < 0) INVALIDATE("smash error: waitpid failed");
         }
         //else add to jobs
-        smash->jobs.addJob(*this);
+        smash->jobs.addJob(*this, pid);
     }
 }
 

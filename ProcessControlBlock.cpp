@@ -6,24 +6,13 @@
 
 ProcessControlBlock::ProcessControlBlock(const job_id_t jobId,
                                          const pid_t processId,
-                                         const std::string& creatingCommand,
-                                         char** args,
-                                         unsigned short numArgs,
-                                         ProcessControlBlock &father,
-                                         ProcessControlBlock* youngerBrother = nullptr,
-                                         ProcessControlBlock* olderBrother = nullptr) :
+                                         const std::string& creatingCommand) :
 
                                          jobId(jobId),
                                          creatingCommand(creatingCommand),
-                                         youngerBrother(youngerBrother),
-                                         olderBrother(olderBrother),
-                                         father(father),
                                          startTime(time(nullptr)),
-                                         processId(processId),
-                                         numArgs(numArgs) {
+                                         processId(processId){
 
-    this->args = std::unique_ptr<std::unique_ptr<char>>(new std::unique_ptr<char>[numArgs]);
-    for (unsigned short i=0; i<numArgs; ++i) this->args[i] = args[i];
 }
 
 const job_id_t ProcessControlBlock::getJobId() const {

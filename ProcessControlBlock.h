@@ -19,9 +19,6 @@ private:
     bool running = true;
     const std::string creatingCommand;
     time_t startTime;
-
-    std::unique_ptr<std::unique_ptr<char>> args;
-    unsigned short numArgs = 0;
 public:
     time_t getStartTime() const;
 
@@ -73,17 +70,12 @@ private:
     ProcessControlBlock* youngestSon = nullptr;
     ProcessControlBlock* youngerBrother = nullptr;
     ProcessControlBlock* olderBrother = nullptr;
-    ProcessControlBlock& father;
+    ProcessControlBlock* father;
 
 public:
     ProcessControlBlock(const job_id_t jobId,
                         const pid_t processId,
-                        const std::string &creatingCommand,
-                        char** args,
-                        unsigned short numArgs,
-                        ProcessControlBlock &father,
-                        ProcessControlBlock* youngerBrother,
-                        ProcessControlBlock* olderBrother);
+                        const std::string &creatingCommand);
 };
 
 std::ostream& operator<<(std::ostream& outstream, ProcessControlBlock& pcb);
