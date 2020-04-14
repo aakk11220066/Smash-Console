@@ -444,16 +444,14 @@ ExternalCommand::ExternalCommand(string cmd_line, SmallShell *smash) : Command(c
 void ExternalCommand::execute() {
     //fork a son
     pid_t pid = fork();
-    if (pid < 0) INVALIDATE("smash error: fork failed");
+    //if (pid < 0) INVALIDATE("smash error: fork failed"); debug
     if (pid == 0){
-        if (setpgrp() < 0) INVALIDATE("smash error: setpgrp failed");
+        //if (setpgrp() < 0) INVALIDATE("smash error: setpgrp failed"); debug
+        setpgrp(); //debug
 
-        char** argsArray =
-                (char**)malloc(args.size()*sizeof(const char*)); //TODO: memory leak?
-        if (!argsArray) INVALIDATE("smash error: malloc failed");
-        for (unsigned short i=0; i<args.size(); ++i) argsArray[i] =
-                const_cast<char*>(args[i].c_str()); //TODO: memory leak?
-        EXEC("/bin/bash", argsArray);
+        char* bashArgs[] = {"/bin/bash", "-c", const_cast<char*>(cmd_line.c_str())}; //TODO: memory leak?
+
+        EXEC("/bin/bash", bashArgs);
     }
     else{
         //if !backgroundRequest then wait for son, inform smash that a foreground program is running
