@@ -444,13 +444,11 @@ ExternalCommand::ExternalCommand(string cmd_line, SmallShell *smash) : Command(c
 void ExternalCommand::execute() {
     //fork a son
     pid_t pid = fork();
-    //if (pid < 0) INVALIDATE("smash error: fork failed"); debug
+    if (pid < 0) INVALIDATE("smash error: fork failed");
     if (pid == 0){
-        //if (setpgrp() < 0) INVALIDATE("smash error: setpgrp failed"); debug
-        setpgrp(); //debug
+        if (setpgrp() < 0) INVALIDATE("smash error: setpgrp failed");
 
         char* bashArgs[] = {"/bin/bash", "-c", const_cast<char*>(cmd_line.c_str())}; //TODO: memory leak?
-
         EXEC("/bin/bash", bashArgs);
     }
     else{
