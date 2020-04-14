@@ -165,6 +165,14 @@ bool SmallShell::sendSignal(signal_t signum, job_id_t jobId) {
     return true;
 }
 
+const ProcessControlBlock *SmallShell::getForegroundProcess() const {
+    return foregroundProcess;
+}
+
+void SmallShell::setForegroundProcess(const ProcessControlBlock *foregroundProcess) {
+    SmallShell::foregroundProcess = foregroundProcess;
+}
+
 Command::Command(string cmd_line, SmallShell* smash) : smash(smash), cmd_line(cmd_line) {
     const unsigned int MAX_ARGS = 20;
     char** argsArray = (char**) malloc(MAX_ARGS*sizeof(char*));
@@ -317,11 +325,19 @@ void JobsManager::killAllJobs() {
 }
 
 void JobsManager::addJob(const Command &cmd, pid_t pid) {
+    addJob(ProcessControlBlock(maxIndex, pid, cmd.cmd_line));
+}
+void JobsManager::addJob(const ProcessControlBlock& pcb){
     removeFinishedJobs();
 
-    ++maxIndex;
-    processes.insert(pair<job_id_t, ProcessControlBlock>(maxIndex,
-            ProcessControlBlock(maxIndex, pid, cmd.cmd_line)));
+    const_cast<ProcessControlBlock&>(pcb).setJobId(maxIndex);
+    processes.insert(pair<job_id_t,
+            ProcessControlBlock>(maxIndex++, pcb));
+
+    //if process is stopped, handle it as such
+    if (!pcb.isRunning()){
+        pauseJob(pcb.getJobId());
+    }
 }
 
 KillCommand::KillCommand(string cmd_line, SmallShell* smash) : BuiltInCommand(cmd_line, smash){
@@ -370,9 +386,12 @@ void ForegroundCommand::execute() {
     cout << *pcb << endl;
 
     smash->sendSignal(SIGCONT, jobId);
+    pid_t pid = pcb->getProcessId();
 
-    const int waitStatus = waitpid(pcb->getProcessId(), nullptr, NO_SETTINGS);
+    smash->setForegroundProcess(pcb);
+    const int waitStatus = waitpid(pid, nullptr, NO_SETTINGS);
     if (waitStatus < 0) INVALIDATE("smash error: waitpid failed");
+    smash->setForegroundProcess(nullptr);
 
     smash->jobs.removeJobById(jobId);
 }
@@ -431,18 +450,25 @@ void ExternalCommand::execute() {
 
         char** argsArray =
                 (char**)malloc(args.size()*sizeof(const char*)); //TODO: memory leak?
+        if (!argsArray) INVALIDATE("smash error: malloc failed");
         for (unsigned short i=0; i<args.size(); ++i) argsArray[i] =
                 const_cast<char*>(args[i].c_str()); //TODO: memory leak?
         EXEC("/bin/bash", argsArray);
     }
     else{
-        //if !backgroundRequest then wait for son
+        //if !backgroundRequest then wait for son, inform smash that a foreground program is running
         if (!backgroundRequest){
+            const job_id_t FG_JOB_ID = 0;
+            ProcessControlBlock foregroundPcb = ProcessControlBlock(FG_JOB_ID, pid, cmd_line);
+            smash->setForegroundProcess(&foregroundPcb);
             const int waitStatus = waitpid(pid, nullptr, NO_SETTINGS);
             if (waitStatus < 0) INVALIDATE("smash error: waitpid failed");
+            smash->setForegroundProcess(nullptr);
         }
         //else add to jobs
-        smash->jobs.addJob(*this, pid);
+        else{
+            smash->jobs.addJob(*this, pid);
+        }
     }
 }
 

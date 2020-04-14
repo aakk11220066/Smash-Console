@@ -29,12 +29,13 @@ private:
     std::vector<ProcessControlBlock*> waitingHeap;
 
     SmallShell& smash;
-    job_id_t maxIndex = 0;
+    job_id_t maxIndex = 1;
 
 public:
     JobsManager(SmallShell& smash);
     ~JobsManager() = default;
     void addJob(const Command& cmd, pid_t pid);
+    void addJob(const ProcessControlBlock& pcb);
     void printJobsList();
     void killAllJobs();
     void removeFinishedJobs();
@@ -54,8 +55,17 @@ private:
     std::string smashPrompt = "smash> ";
 
     std::string lastPwd = "";
-public:
 
+    const ProcessControlBlock* foregroundProcess = nullptr;
+public:
+    const ProcessControlBlock *getForegroundProcess() const;
+
+    void setForegroundProcess(const ProcessControlBlock *foregroundProcess);
+
+public:
+    ProcessControlBlock* getLateProcess(){ //FIXME: DEBUG
+        return nullptr;
+    }
     const std::string &getLastPwd() const;
     void setLastPwd(const std::string &lastPwd);
     bool sendSignal(signal_t signum, job_id_t jobId);

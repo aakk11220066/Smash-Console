@@ -39,7 +39,7 @@ ProcessControlBlock* ProcessControlBlock::getOlderBrother() const {
     return olderBrother;
 }
 
-ProcessControlBlock &ProcessControlBlock::getFather() const {
+ProcessControlBlock* ProcessControlBlock::getFather() const {
     return father;
 }
 
@@ -93,6 +93,10 @@ void ProcessControlBlock::setProcessId(pid_t processId) {
 
 time_t ProcessControlBlock::getStartTime() const {
     return startTime;
+}
+
+void ProcessControlBlock::setJobId(job_id_t jobId) {
+    ProcessControlBlock::jobId = jobId;
 }
 
 std::ostream& operator<<(std::ostream &outstream, ProcessControlBlock &pcb) {

@@ -1,21 +1,79 @@
 #include <iostream>
 #include <unistd.h>
+#include <stdio.h>
 #include <sys/wait.h>
 #include <signal.h>
 #include "Commands.h"
-#include "signals.h"
+
+using namespace std;
+
+SmallShell* shell = nullptr;
+
+namespace SignalHandlers {
+    void ctrlZHandler(int sig_num) {
+        cout << "smash: got ctrl-Z" << endl;
+
+        //send SIGKILL to foreground process
+        const ProcessControlBlock *foregroundProcess = shell->getForegroundProcess();
+        if (foregroundProcess) {
+            //stop process
+            if (kill(foregroundProcess->getProcessId(), SIGSTOP) < 0) {
+                cerr << "smash error: kill failed" << endl;
+                return;
+            }
+            cout << "smash: process " << foregroundProcess->getProcessId() << " was stopped" << endl;
+
+            //log that process is stopped
+            const_cast<ProcessControlBlock*>(foregroundProcess)->setRunning(false);
+
+            //add foreground command to jobs
+            shell->jobs.addJob(*foregroundProcess);
+        }
+    }
+
+    void ctrlCHandler(int sig_num) {
+        cout << "smash: got ctrl-C" << endl;
+
+        //send SIGKILL to foreground process
+        const ProcessControlBlock *foregroundProcess = shell->getForegroundProcess();
+        if (foregroundProcess) {
+            if (kill(foregroundProcess->getProcessId(), SIGKILL) < 0) {
+                cerr << "smash error: kill failed" << endl;
+                return;
+            }
+            cout << "smash: process " << foregroundProcess->getProcessId() << " was killed" << endl;
+        }
+    }
+
+    void alarmHandler(int sig_num) {
+        cout << "smash: got an alarm" << endl;
+
+        //find command that cause alarm
+        ProcessControlBlock* lateProcess = shell->getLateProcess();
+
+        //send SIGKILL
+        if (kill(lateProcess->getProcessId(), SIGKILL) < 0) {
+            cerr << "smash error: kill failed" << endl;
+            return;
+        }
+
+        cout << "smash: " << lateProcess->getCreatingCommand() << " timed out!" << endl;
+    }
+}
 
 int main(int argc, char* argv[]) {
-    if(signal(SIGTSTP , ctrlZHandler)==SIG_ERR) {
+    if(signal(SIGTSTP , SignalHandlers::ctrlZHandler)==SIG_ERR) {
         perror("smash error: failed to set ctrl-Z handler");
     }
-    if(signal(SIGINT , ctrlCHandler)==SIG_ERR) {
+    if(signal(SIGINT , SignalHandlers::ctrlCHandler)==SIG_ERR) {
         perror("smash error: failed to set ctrl-C handler");
     }
-
-    //TODO: setup sig alarm handler
+    if(signal(SIGALRM , SignalHandlers::alarmHandler)==SIG_ERR) {
+        perror("smash error: failed to set alarm signal handler");
+    }
 
     SmallShell& smash = SmallShell::getInstance();
+    shell = &smash;
     while(true) {
         std::cout << smash.getSmashPrompt();
         std::string cmd_line;

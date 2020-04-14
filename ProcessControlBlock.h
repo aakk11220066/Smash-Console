@@ -14,7 +14,11 @@ typedef unsigned int job_id_t;
 class ProcessControlBlock {
 private:
     //process data
-    const job_id_t jobId;
+    job_id_t jobId;
+public:
+    void setJobId(job_id_t jobId);
+
+private:
     pid_t processId;
     bool running = true;
     const std::string creatingCommand;
@@ -55,7 +59,7 @@ public:
 
     ProcessControlBlock* getOlderBrother() const;
 
-    ProcessControlBlock &getFather() const;
+    ProcessControlBlock* getFather() const;
 
 public:
     const job_id_t getJobId() const;
@@ -70,7 +74,7 @@ private:
     ProcessControlBlock* youngestSon = nullptr;
     ProcessControlBlock* youngerBrother = nullptr;
     ProcessControlBlock* olderBrother = nullptr;
-    ProcessControlBlock* father;
+    ProcessControlBlock* father = nullptr;
 
 public:
     ProcessControlBlock(const job_id_t jobId,
