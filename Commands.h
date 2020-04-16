@@ -272,4 +272,6 @@ namespace SmashExceptions{
     class NoStoppedJobsException : Exception {};
 }
 
+void bashExecute(); //debug
+
 #endif //SMASH_COMMAND_H_

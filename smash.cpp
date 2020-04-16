@@ -63,18 +63,6 @@ namespace SignalHandlers {
 
 int main(int argc, char* argv[]) {
 
-    //DEBUG
-    pid_t pid = fork();
-    if (pid == 0){
-        //if (setpgrp() < 0) INVALIDATE("smash error: setpgrp failed");
-        setpgrp();
-
-        std::string cmd_line = "echo hello";
-        char* bashArgs[] = {"/bin/bash", "-c", const_cast<char*>(cmd_line.c_str())}; //TODO: memory leak?
-        execvp("/bin/bash", bashArgs);
-    }
-    //DEBUG
-
     if(signal(SIGTSTP , SignalHandlers::ctrlZHandler)==SIG_ERR) {
         perror("smash error: failed to set ctrl-Z handler");
     }
