@@ -449,9 +449,26 @@ void ExternalCommand::execute() {
         if (setpgrp() < 0) INVALIDATE("smash error: setpgrp failed");
 
         char* bashArgs[] = {"/bin/bash", "-c", const_cast<char*>(cmd_line.c_str())}; //TODO: memory leak?
+
+        cout << "executing " << bashArgs[0] << " " << bashArgs[1] << " " << bashArgs[2] << endl; //debug
         EXEC("/bin/bash", bashArgs);
     }
+
+    //Block for debugging purposes...
+    /*
+    cout << "Entering child";
+    pid_t pid = fork();
+    if (pid == 0){
+        //if (setpgrp() < 0) INVALIDATE("smash error: setpgrp failed");
+        setpgrp();
+
+        std::string cmd_line = "echo hello";
+        char* bashArgs[] = {"/bin/bash", "-c", const_cast<char*>(cmd_line.c_str())}; //TODO: memory leak?
+        execvp("/bin/bash", bashArgs);
+    }*/
+
     else{
+        sleep(5); //debug
         //if !backgroundRequest then wait for son, inform smash that a foreground program is running
         if (!backgroundRequest){
             const job_id_t FG_JOB_ID = 0;
