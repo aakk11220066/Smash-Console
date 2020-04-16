@@ -5,6 +5,8 @@
 #include <signal.h>
 #include "Commands.h"
 
+#define DEBUG_PRINT(err_msg) cerr << "DEBUG: " << err_msg //debug
+
 using namespace std;
 
 SmallShell* shell = nullptr;
@@ -13,9 +15,10 @@ namespace SignalHandlers {
     void ctrlZHandler(int sig_num) {
         cout << "smash: got ctrl-Z" << endl;
 
-        //send SIGKILL to foreground process
+        //send SIGSTOP to foreground process
         const ProcessControlBlock *foregroundProcess = shell->getForegroundProcess();
         if (foregroundProcess) {
+
             //stop process
             if (kill(foregroundProcess->getProcessId(), SIGSTOP) < 0) {
                 cerr << "smash error: kill failed" << endl;
@@ -28,6 +31,17 @@ namespace SignalHandlers {
 
             //add foreground command to jobs
             shell->jobs.addJob(*foregroundProcess);
+
+            /*
+            //DEBUG
+            if (foregroundProcess) {
+                if (kill(foregroundProcess->getProcessId(), SIGKILL) < 0) {
+                    cerr << "smash error: kill failed" << endl;
+                    return;
+                }
+                cout << "smash: process " << foregroundProcess->getProcessId() << " was stopped" << endl;
+            }*/
+            //DEBUG
         }
     }
 
@@ -62,7 +76,7 @@ namespace SignalHandlers {
 }
 
 int main(int argc, char* argv[]) {
-
+    DEBUG_PRINT("this pid is " << getpid()<<endl);
     if(signal(SIGTSTP , SignalHandlers::ctrlZHandler)==SIG_ERR) {
         perror("smash error: failed to set ctrl-Z handler");
     }

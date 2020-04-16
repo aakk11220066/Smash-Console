@@ -31,6 +31,7 @@ private:
     SmallShell& smash;
     job_id_t maxIndex = 1;
 
+    job_id_t resetMaxIndex();
 public:
     JobsManager(SmallShell& smash);
     ~JobsManager() = default;
@@ -179,7 +180,7 @@ class QuitCommand : public BuiltInCommand {
 private:
     bool killRequest = false;
 public:
-    QuitCommand(const char* cmd_line, SmallShell* smash);
+    QuitCommand(string cmd_line, SmallShell* smash);
     virtual ~QuitCommand() {}
     void execute() override;
 };
@@ -272,6 +273,5 @@ namespace SmashExceptions{
     class NoStoppedJobsException : Exception {};
 }
 
-void bashExecute(); //debug
 
 #endif //SMASH_COMMAND_H_

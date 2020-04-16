@@ -22,7 +22,7 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 #define FUNC_EXIT()
 #endif
 
-#define DEBUG_PRINT cerr << "DEBUG: "
+#define DEBUG_PRINT(err_msg) cerr << "DEBUG: " << err_msg
 
 
 #define EXEC(path, arg) \
@@ -84,7 +84,7 @@ string _removeBackgroundSign(string cmd_line) {
       // find last character other than spaces
       unsigned int idx = str.find_last_not_of(WHITESPACE);
       // if all characters are spaces then return
-      if (idx == string::npos) {
+      if (cmd_line=="" || idx == string::npos) {
         return cmd_line;
       }
       // if the command line does not end with & then return
@@ -122,7 +122,9 @@ std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
     else if (cmd_s.find("cd") == 0) return std::unique_ptr<Command>(new ChangeDirCommand(cmd_line, this));
     else if (cmd_s.find("jobs") == 0) return std::unique_ptr<Command>(new JobsCommand(cmd_line, this));
     else if (cmd_s.find("kill") == 0) return std::unique_ptr<Command>(new KillCommand(cmd_line, this));
+    else if (cmd_s.find("bg") == 0) return std::unique_ptr<Command>(new BackgroundCommand(cmd_line, this));
     else if (cmd_s.find("fg") == 0) return std::unique_ptr<Command>(new ForegroundCommand(cmd_line, this));
+    else if (cmd_s.find("quit") == 0) return std::unique_ptr<Command>(new QuitCommand(cmd_line, this));
     else return std::unique_ptr<Command>(new ExternalCommand(cmd_line, this));
 }
 
@@ -245,13 +247,27 @@ void JobsCommand::execute() {
 }
 
 void JobsManager::removeFinishedJobs() {
+    std::list<ProcessControlBlock*> targets;
     for (pair<job_id_t, ProcessControlBlock> job : processes){
-        if (!smash.sendSignal(0, job.first)) {
-            std::vector<ProcessControlBlock*>::iterator position =
-                    find(waitingHeap.begin(), waitingHeap.end(), &job.second);
-            if (position != waitingHeap.end()) waitingHeap.erase(position);
-            processes.erase(job.first);
+        int jobStatus;
+        int sysCallStatus = waitpid(job.second.getProcessId(),&jobStatus,WNOHANG);
+        //DEBUG_PRINT("tried waiting for process "<<job.second.getProcessId()<<", got sysCallStatus = "<<jobStatus<<".  errno = "<<errno<<endl);
+        if (WIFEXITED(jobStatus)) {
+            DEBUG_PRINT("process "<<job.second.getProcessId()<<" finished with exit status "<<WEXITSTATUS(jobStatus)<<endl);
+            targets.push_back(&job.second);
         }
+        if (sysCallStatus<0) {
+            cerr << "smash error: waitpid failed" << endl;
+            return;
+        }
+    }
+    for (ProcessControlBlock* job : targets){
+        DEBUG_PRINT("Process number " << job->getJobId() << " finished, killing... "<<endl); //debug
+        std::vector<ProcessControlBlock*>::iterator position =
+                find(waitingHeap.begin(), waitingHeap.end(), job);
+        if (position != waitingHeap.end()) waitingHeap.erase(position);
+        processes.erase(job->getJobId());
+        DEBUG_PRINT("...killed." << endl);
     }
 
     make_heap(waitingHeap.begin(), waitingHeap.end());
@@ -330,6 +346,8 @@ void JobsManager::addJob(const Command &cmd, pid_t pid) {
 void JobsManager::addJob(const ProcessControlBlock& pcb){
     removeFinishedJobs();
 
+    resetMaxIndex();
+
     const_cast<ProcessControlBlock&>(pcb).setJobId(maxIndex);
     processes.insert(pair<job_id_t,
             ProcessControlBlock>(maxIndex++, pcb));
@@ -337,6 +355,12 @@ void JobsManager::addJob(const ProcessControlBlock& pcb){
     //if process is stopped, handle it as such
     if (!pcb.isRunning()){
         pauseJob(pcb.getJobId());
+    }
+}
+
+job_id_t JobsManager::resetMaxIndex() {
+    while (maxIndex>1 && getJobById(maxIndex)){
+        --maxIndex;
     }
 }
 
@@ -354,7 +378,9 @@ void KillCommand::execute() {
     ProcessControlBlock* pcbPtr = smash->jobs.getJobById(jobId);
     if (nullptr == pcbPtr) INVALIDATE("smash error: kill: job-id " << jobId << " does not exist");
 
-    if (kill(pcbPtr->getProcessId(), signum)) {
+    int signalSendStatus = kill(pcbPtr->getProcessId(), signum);
+    //DEBUG_PRINT("Sending signal "<<signum<<" to job "<<jobId<<", pid "<<pcbPtr->getProcessId()<<endl<<"signalSendStatus = " << signalSendStatus << endl);
+    if (signalSendStatus) {
         if (!verbose) throw SmashExceptions::SignalSendException();
         INVALIDATE("smash error: kill failed");
     }
@@ -427,7 +453,7 @@ void BackgroundCommand::execute() {
     pcb->setRunning(true);
 }
 
-QuitCommand::QuitCommand(const char *cmd_line, SmallShell *smash) : BuiltInCommand(cmd_line, smash) {
+QuitCommand::QuitCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cmd_line, smash) {
     if (args.size() - 1 ==1 && args[1] == "kill") killRequest = true;
 }
 
@@ -445,9 +471,10 @@ void ExternalCommand::execute() {
     //fork a son
     pid_t pid = fork();
     if (pid < 0) INVALIDATE("smash error: fork failed");
+    //DEBUG_PRINT("created process with pid " << pid << endl);
     if (pid == 0){
         if (setpgrp() < 0) INVALIDATE("smash error: setpgrp failed");
-
+        sleep(10);//debug
         execl("/bin/bash", "/bin/bash", "-c", cmd_line.c_str(), NULL);
     }
 
@@ -457,7 +484,7 @@ void ExternalCommand::execute() {
             const job_id_t FG_JOB_ID = 0;
             ProcessControlBlock foregroundPcb = ProcessControlBlock(FG_JOB_ID, pid, cmd_line);
             smash->setForegroundProcess(&foregroundPcb);
-            const int waitStatus = waitpid(pid, nullptr, NO_SETTINGS);
+            const int waitStatus = waitpid(pid, nullptr, WUNTRACED);
             if (waitStatus < 0) INVALIDATE("smash error: waitpid failed");
             smash->setForegroundProcess(nullptr);
         }
