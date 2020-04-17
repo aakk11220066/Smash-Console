@@ -6,6 +6,7 @@
 #include <string>
 #include <map>
 #include <signal.h>
+#include <fstream>
 #include "ProcessControlBlock.h"
 
 #define COMMAND_ARGS_MAX_LENGTH (200)
@@ -15,10 +16,11 @@
 typedef unsigned int job_id_t;
 typedef unsigned int signal_t;
 
-using std::string;
-
 class Command;
 class SmallShell;
+
+using std::string;
+using std::unique_ptr;
 
 class JobsManager {
 private:
@@ -46,7 +48,6 @@ public:
     ProcessControlBlock *getLastStoppedJob();
     void pauseJob(job_id_t jobId);
     bool isEmpty();
-    // TODO: Add extra methods or modify exisitng ones as needed
 };
 
 class SmallShell {
@@ -64,7 +65,7 @@ public:
     void setForegroundProcess(const ProcessControlBlock *foregroundProcess);
 
 public:
-    ProcessControlBlock* getLateProcess(){ //FIXME: DEBUG
+    ProcessControlBlock* getLateProcess(){ //FIXME: implement
         return nullptr;
     }
     const std::string &getLastPwd() const;
@@ -74,7 +75,7 @@ public:
     JobsManager jobs;
 
 public:
-    std::unique_ptr<Command> CreateCommand(std::string cmd_line);
+    unique_ptr<Command> CreateCommand(std::string cmd_line);
 
     SmallShell(SmallShell const&)      = delete; // disable copy ctor
 
@@ -86,22 +87,21 @@ public:
         return instance;
     }
 
-    ~SmallShell();
+    ~SmallShell() = default;
 
     void executeCommand(std::string cmd_line);
 
     const std::string &getSmashPrompt() const;
 
     void setSmashPrompt(const std::string &smashPrompt);
-
-    // TODO: add extra methods as needed
 };
 
 
 class Command {
 protected:
     std::vector<const std::string> args;
-    SmallShell* const smash = nullptr;
+    SmallShell* const smash;
+    bool verbose = true;
 
 public:
     bool invalid = false;
@@ -111,16 +111,13 @@ public:
     Command(std::string cmd_line, SmallShell* smash);
     virtual ~Command() = default;
     virtual void execute() = 0;
-    //virtual void prepare();
-    //virtual void cleanup();
-    // TODO: Add your extra methods if needed
 };
 
 class BuiltInCommand : public Command {
 public:
     BuiltInCommand(std::string cmd_line, SmallShell* smash);
 
-    virtual ~BuiltInCommand() {}
+    virtual ~BuiltInCommand() = default;
 };
 
 class ExternalCommand : public Command {
@@ -130,40 +127,50 @@ private:
 
 public:
     ExternalCommand(string cmd_line, SmallShell* smash);
-    virtual ~ExternalCommand() {}
+    virtual ~ExternalCommand() = default;
     void execute() override;
 };
 
 class PipeCommand : public Command {
-  // TODO: Add your data members
- public:
-  PipeCommand(std::string cmd_line, SmallShell* smash);
-  virtual ~PipeCommand() {}
-  void execute() override;
+    unique_ptr<Command> commandFrom, commandTo;
+    bool errPipe = false;
+public:
+    PipeCommand(std::string cmd_line, SmallShell* smash);
+    PipeCommand(unique_ptr<Command> commandFrom, unique_ptr<Command> commandTo, SmallShell *smash);
+    virtual ~PipeCommand() = default;
+    void execute() override;
 };
 
-class RedirectionCommand : public Command {
- // TODO: Add your data members
- public:
-  explicit RedirectionCommand(std::string cmd_line, SmallShell* smash);
-  virtual ~RedirectionCommand() {}
-  void execute() override;
-  //void prepare() override;
-  //void cleanup() override;
+class RedirectionCommand : public PipeCommand {
+private:
+    bool append = false;
+    short operatorPosition = -1;
+    SmallShell* sanitizeInputs(SmallShell* smash);
+    class WriteCommand : public BuiltInCommand{
+        std::ofstream sink;
+    public:
+        explicit WriteCommand(string fileName, bool append, SmallShell* smash);
+        virtual ~WriteCommand();
+        void execute() override;
+    };
+public:
+    RedirectionCommand(std::string cmd_line, SmallShell* smash);
+    RedirectionCommand(unique_ptr<Command> commandFrom, string filename, bool append, SmallShell* smash);
+    virtual ~RedirectionCommand() = default;
+    void execute() override;
 };
 
 class ChangeDirCommand : public BuiltInCommand {
-// TODO: Add your data members
 public:
     ChangeDirCommand(std::string cmd_line, SmallShell* smash);
-    virtual ~ChangeDirCommand() {}
+    virtual ~ChangeDirCommand() = default;
     void execute() override;
 };
 
 class GetCurrDirCommand : public BuiltInCommand {
 public:
     GetCurrDirCommand(std::string cmd_line, SmallShell* smash);
-    virtual ~GetCurrDirCommand() {}
+    virtual ~GetCurrDirCommand() = default;
     void execute() override;
 
     static std::string getCurrDir();
@@ -172,7 +179,7 @@ public:
 class ShowPidCommand : public BuiltInCommand {
 public:
     ShowPidCommand(string cmd_line, SmallShell* smash);
-    virtual ~ShowPidCommand() {}
+    virtual ~ShowPidCommand() = default;
     void execute() override;
 };
 
@@ -181,7 +188,7 @@ private:
     bool killRequest = false;
 public:
     QuitCommand(string cmd_line, SmallShell* smash);
-    virtual ~QuitCommand() {}
+    virtual ~QuitCommand() = default;
     void execute() override;
 };
 
@@ -194,7 +201,7 @@ class CommandsHistory {
  // TODO: Add your data members
  public:
   CommandsHistory();
-  ~CommandsHistory() {}
+  ~CommandsHistory() = default;
   void addRecord(const char* cmd_line);
   void printHistory();
 };
@@ -203,14 +210,14 @@ class HistoryCommand : public BuiltInCommand {
  // TODO: Add your data members
  public:
   HistoryCommand(const char* cmd_line, CommandsHistory* history);
-  virtual ~HistoryCommand() {}
+  virtual ~HistoryCommand() = default;
   void execute() override;
 };*/
 
 class JobsCommand : public BuiltInCommand {
 public:
     JobsCommand(string cmd_line, SmallShell* smash);
-    virtual ~JobsCommand() {}
+    virtual ~JobsCommand() = default;
     void execute() override;
 };
 
@@ -218,9 +225,8 @@ class KillCommand : public BuiltInCommand {
     signal_t signum = -1;
     job_id_t jobId = -1;
 public:
-    bool verbose = true;
     KillCommand(string cmd_line, SmallShell* smash);
-    virtual ~KillCommand() {}
+    virtual ~KillCommand() = default;
     void execute() override;
 };
 
@@ -231,7 +237,7 @@ private:
 
 public:
     ForegroundCommand(string cmd_line, SmallShell* smash);
-    virtual ~ForegroundCommand() {}
+    virtual ~ForegroundCommand() = default;
     void execute() override;
 };
 
@@ -241,16 +247,25 @@ class BackgroundCommand : public BuiltInCommand {
 
 public:
     BackgroundCommand(string cmd_line, SmallShell* smash);
-    virtual ~BackgroundCommand() {}
+    virtual ~BackgroundCommand() = default;
     void execute() override;
 };
 
-
-// TODO: should it really inherit from BuiltInCommand ?
-class CopyCommand : public BuiltInCommand {
+//TODO: handle backgrounding
+class CopyCommand : public RedirectionCommand {
+private:
+    bool backgroundRequest;
+    SmallShell* init(SmallShell* smash);
+    class ReadCommand : public BuiltInCommand{
+        std::ifstream source;
+    public:
+        explicit ReadCommand(string fileName, SmallShell* smash);
+        virtual ~ReadCommand();
+        void execute() override;
+    };
 public:
     CopyCommand(string cmd_line, SmallShell* smash);
-    virtual ~CopyCommand() {}
+    virtual ~CopyCommand() = default;
     void execute() override;
 };
 
@@ -264,13 +279,14 @@ public:
     void execute() override;
 };
 
-// TODO: add more classes if needed 
-// maybe chprompt , timeout ?
+// TODO: add timeoutCommand class
+
 
 namespace SmashExceptions{
     class Exception : public std::exception {};
-    class SignalSendException : Exception {};
-    class NoStoppedJobsException : Exception {};
+    class SignalSendException : public Exception {};
+    class NoStoppedJobsException : public Exception {};
+    class FileOpenException : public Exception{};
 }
 
 
