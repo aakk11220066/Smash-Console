@@ -611,7 +611,7 @@ void CopyCommand::execute() {
 }
 
 SmallShell *CopyCommand::init(SmallShell *smash) {
-    //TODO: run Command ctor to setup args vector
+    //TODO: figure out how to run init after Command ctor but before sending possibly erroneous arguments to RedirectionCommand ctor (unless certain it doesn't matter).  Possibly just catch IndexOutOfBounds-like exception from bad access to args vector (would need to switch to .at instead of operator[])
     if (args.size() -1 != 2) INVALIDATE("smash error: cp: invalid arguments");
     return smash;
 }
