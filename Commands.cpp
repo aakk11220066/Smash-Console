@@ -105,24 +105,30 @@ SmallShell::SmallShell() : jobs(*this) {}
 * Creates and returns a pointer to Command class which matches the given command line (cmd_line)
 */
 std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
-    string cmd_s = _trim(string(cmd_line));
-    //Special commands
-    if (cmd_s.find('|') != string::npos) return std::unique_ptr<Command>(new PipeCommand(cmd_line, this));
-    else if (cmd_s.find('>') != string::npos) return std::unique_ptr<Command>(new RedirectionCommand(cmd_line, this));
-    else if (cmd_s.find("cp") == 0) return std::unique_ptr<Command>(new CopyCommand(cmd_line, this));
-    else if (cmd_s.find("timeout") == 0) return std::unique_ptr<Command>(new TimeoutCommand(cmd_line, this));
+    try {
+        string cmd_s = _trim(string(cmd_line));
 
-    //Ordinary commands
-    else if (cmd_s.find("chprompt") == 0) return std::unique_ptr<Command>(new ChpromptCommand(cmd_line, this));
-    else if (cmd_s.find("showpid") == 0) return std::unique_ptr<Command>(new ShowPidCommand(cmd_line, this));
-    else if (cmd_s.find("pwd") == 0) return std::unique_ptr<Command>(new GetCurrDirCommand(cmd_line, this));
-    else if (cmd_s.find("cd") == 0) return std::unique_ptr<Command>(new ChangeDirCommand(cmd_line, this));
-    else if (cmd_s.find("jobs") == 0) return std::unique_ptr<Command>(new JobsCommand(cmd_line, this));
-    else if (cmd_s.find("kill") == 0) return std::unique_ptr<Command>(new KillCommand(cmd_line, this));
-    else if (cmd_s.find("bg") == 0) return std::unique_ptr<Command>(new BackgroundCommand(cmd_line, this));
-    else if (cmd_s.find("fg") == 0) return std::unique_ptr<Command>(new ForegroundCommand(cmd_line, this));
-    else if (cmd_s.find("quit") == 0) return std::unique_ptr<Command>(new QuitCommand(cmd_line, this));
-    else return std::unique_ptr<Command>(new ExternalCommand(cmd_line, this));
+        //Special commands
+        if (cmd_s.find('|') != string::npos) return std::unique_ptr<Command>(new PipeCommand(cmd_line, this));
+        else if (cmd_s.find('>') != string::npos)
+            return std::unique_ptr<Command>(new RedirectionCommand(cmd_line, this));
+        else if (cmd_s.find("cp") == 0) return std::unique_ptr<Command>(new CopyCommand(cmd_line, this));
+        else if (cmd_s.find("timeout") == 0) return std::unique_ptr<Command>(new TimeoutCommand(cmd_line, this));
+
+            //Ordinary commands
+        else if (cmd_s.find("chprompt") == 0) return std::unique_ptr<Command>(new ChpromptCommand(cmd_line, this));
+        else if (cmd_s.find("showpid") == 0) return std::unique_ptr<Command>(new ShowPidCommand(cmd_line, this));
+        else if (cmd_s.find("pwd") == 0) return std::unique_ptr<Command>(new GetCurrDirCommand(cmd_line, this));
+        else if (cmd_s.find("cd") == 0) return std::unique_ptr<Command>(new ChangeDirCommand(cmd_line, this));
+        else if (cmd_s.find("jobs") == 0) return std::unique_ptr<Command>(new JobsCommand(cmd_line, this));
+        else if (cmd_s.find("kill") == 0) return std::unique_ptr<Command>(new KillCommand(cmd_line, this));
+        else if (cmd_s.find("bg") == 0) return std::unique_ptr<Command>(new BackgroundCommand(cmd_line, this));
+        else if (cmd_s.find("fg") == 0) return std::unique_ptr<Command>(new ForegroundCommand(cmd_line, this));
+        else if (cmd_s.find("quit") == 0) return std::unique_ptr<Command>(new QuitCommand(cmd_line, this));
+        else return std::unique_ptr<Command>(new ExternalCommand(cmd_line, this));
+    } catch (SmashExceptions::InvalidArgumentsException& error){
+        cerr << error.what();
+    }
 }
 
 void SmallShell::executeCommand(string cmd_line) {
@@ -459,17 +465,17 @@ void QuitCommand::execute() {
     exit(0);
 }
 
-ExternalCommand::ExternalCommand(string cmd_line, SmallShell *smash) : Command(cmd_line, smash),
-    backgroundRequest(_isBackgroundComamnd(cmd_line)) {}
+BackgroundableCommand::BackgroundableCommand(string cmd_line, SmallShell *smash) : Command(cmd_line, smash),
+       backgroundRequest(_isBackgroundComamnd(cmd_line)) {}
 
-void ExternalCommand::execute() {
+void BackgroundableCommand::execute() {
     //fork a son
     pid_t pid = fork();
     if (pid < 0) INVALIDATE("smash error: fork failed");
     if (pid == 0){
         if (setpgrp() < 0) INVALIDATE("smash error: setpgrp failed");
 
-        execl("/bin/bash", "/bin/bash", "-c", _removeBackgroundSign(cmd_line).c_str(), NULL);
+        executeBackgroundable();
     }
 
     else{
@@ -491,7 +497,7 @@ void ExternalCommand::execute() {
 
 
 
-PipeCommand::PipeCommand(std::string cmd_line, SmallShell *smash) : Command(cmd_line, smash) {
+PipeCommand::PipeCommand(std::string cmd_line, SmallShell *smash) : BackgroundableCommand(cmd_line, smash) {
     //TODO: handle verbosity
     //TODO: verify that if not given 2 commands then need to invalidate
     unsigned short pipeIndex = cmd_line.find_first_of('|');
@@ -506,15 +512,15 @@ PipeCommand::PipeCommand(std::string cmd_line, SmallShell *smash) : Command(cmd_
     bool backgroundCommand = _isBackgroundComamnd(cmd_line);
 
     commandFrom = smash->CreateCommand(cmd_lineFrom + (backgroundCommand? "&" : ""));
-    commandTo = smash->CreateCommand(cmd_lineTo);
+    commandTo = smash->CreateCommand(cmd_lineTo + (backgroundCommand? "&" : ""));
     assert(commandTo && commandFrom);
     invalid = commandFrom->invalid && commandTo->invalid;
 }
 
 PipeCommand::PipeCommand(std::unique_ptr<Command> commandFrom, std::unique_ptr<Command> commandTo, SmallShell* smash) :
-        Command(cmd_line, smash), commandFrom(std::move(commandFrom)), commandTo(std::move(commandTo)){}
+        BackgroundableCommand(cmd_line, smash), commandFrom(std::move(commandFrom)), commandTo(std::move(commandTo)){}
 
-void PipeCommand::execute() {
+void PipeCommand::executeBackgroundable() {
     int pidFrom, pidTo;
     int pipeSides[2];
     if (pipe(pipeSides)) INVALIDATE("smash error: pipe failed");
@@ -556,17 +562,18 @@ unsigned short indicator(bool condition){
 RedirectionCommand::RedirectionCommand(unique_ptr<Command> commandFrom, string filename, bool append, SmallShell *smash) try :
     PipeCommand(std::move(commandFrom), unique_ptr<Command>(new WriteCommand(filename, append, smash)), smash) {}
     catch (SmashExceptions::FileOpenException& e){
-        INVALIDATE("smash error: redirection: invalid arguments");
+        throw SmashExceptions::InvalidArgumentsException("redirection");
         //TODO: verify that if bad filename given need to invalidate
     }
 
+#define operatorPosition cmd_line.find_first_of('>')
 RedirectionCommand::RedirectionCommand(std::string cmd_line, SmallShell *smash) :
-        RedirectionCommand(smash->CreateCommand(cmd_line.substr(0,cmd_line.find_first_of('>'))),
+        RedirectionCommand(smash->CreateCommand(cmd_line.substr(0,operatorPosition)),
                            cmd_line.substr(operatorPosition+1
                                 +indicator(cmd_line.at(1+operatorPosition == '>'))),
                            cmd_line.at(1+operatorPosition) == '>',
                     sanitizeInputs(smash)) {} //TODO: handle verbosity
-
+#undef operatorPosition
 
 
 void RedirectionCommand::execute() {
@@ -574,19 +581,20 @@ void RedirectionCommand::execute() {
 }
 
 SmallShell *RedirectionCommand::sanitizeInputs(SmallShell *smash) {
-    operatorPosition = cmd_line.find_first_of('>');
+    //operatorPosition = cmd_line.find_first_of('>');
     //ensure a string representing a filename was specified (validation that it is a filename in redirected ctor)
-    if (!(cmd_line.size() > operatorPosition+1)) INVALIDATE("smash error: redirection: invalid arguments");
+    if (!(cmd_line.size() > operatorPosition+1)) throw SmashExceptions::InvalidArgumentsException("redirection");
+    return smash;
 }
 
 RedirectionCommand::WriteCommand::WriteCommand(string fileName, bool append, SmallShell* smash) :
-    BuiltInCommand("write_into "+fileName, smash){
+    BackgroundableCommand("write_into "+fileName, smash){
 
     sink.open(fileName, append? std::ofstream::app : std::ofstream::trunc);
     if (sink.failbit) throw SmashExceptions::FileOpenException();
 }
 
-void RedirectionCommand::WriteCommand::execute() {
+void RedirectionCommand::WriteCommand::executeBackgroundable() {
     char buf;
     while (read(STDIN_FILENO, &buf, 1) > 0) sink.write(&buf, 1);
 }
@@ -596,13 +604,15 @@ RedirectionCommand::WriteCommand::~WriteCommand() {
 }
 
 CopyCommand::CopyCommand(string cmd_line, SmallShell *smash) try :
-    backgroundRequest(_isBackgroundComamnd(cmd_line)),
     RedirectionCommand(unique_ptr<Command>(new ReadCommand(args[1], init(smash))),
                        args[2],
                        false,
-                       smash) {} //TODO: verify that if input is not 2 filepaths then need to invalidate
+                       smash) {
+
+        backgroundRequest = _isBackgroundComamnd(cmd_line);
+    } //TODO: verify that if input is not 2 filepaths then need to invalidate
     catch (SmashExceptions::FileOpenException& e){
-        INVALIDATE("smash error: cp: invalid arguments");
+        throw SmashExceptions::InvalidArgumentsException("cp");
     }
 
 
@@ -612,23 +622,30 @@ void CopyCommand::execute() {
 
 SmallShell *CopyCommand::init(SmallShell *smash) {
     //TODO: figure out how to run init after Command ctor but before sending possibly erroneous arguments to RedirectionCommand ctor (unless certain it doesn't matter).  Possibly just catch IndexOutOfBounds-like exception from bad access to args vector (would need to switch to .at instead of operator[])
-    if (args.size() -1 != 2) INVALIDATE("smash error: cp: invalid arguments");
+    if (args.size() -1 != 2) throw SmashExceptions::InvalidArgumentsException("cp");
     return smash;
 }
 
 CopyCommand::ReadCommand::ReadCommand(string fileName, SmallShell *smash) :
-    BuiltInCommand("read_from "+fileName, smash) {
+    BackgroundableCommand("read_from "+fileName, smash) {
 
     source.open(fileName);
     if (source.failbit) throw SmashExceptions::FileOpenException();
 }
 
-void CopyCommand::ReadCommand::execute() {
+
+void CopyCommand::ReadCommand::executeBackgroundable() {
     do cout<<source.get(); while (source.good());
 }
 
 CopyCommand::ReadCommand::~ReadCommand() {
     source.close();
+}
+
+ExternalCommand::ExternalCommand(string cmd_line, SmallShell *smash) : BackgroundableCommand(cmd_line, smash) {}
+
+void ExternalCommand::executeBackgroundable() {
+    execl("/bin/bash", "/bin/bash", "-c", _removeBackgroundSign(cmd_line).c_str(), NULL);
 }
 
 
