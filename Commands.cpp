@@ -23,7 +23,7 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 #endif
 
 #define DEBUG_PRINT(err_msg) cerr << "DEBUG: " << err_msg
-
+#define DIGITS "1234567890"
 
 #define EXEC(path, arg) \
     execvp((path), (arg));
@@ -99,6 +99,7 @@ string _removeBackgroundSign(string cmd_line) {
 }
 
 
+
 SmallShell::SmallShell() : jobs(*this) {}
 
 /**
@@ -123,6 +124,20 @@ std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
     else if (cmd_s.find("fg") == 0) return std::unique_ptr<Command>(new ForegroundCommand(cmd_line, this));
     else if (cmd_s.find("quit") == 0) return std::unique_ptr<Command>(new QuitCommand(cmd_line, this));
     else return std::unique_ptr<Command>(new ExternalCommand(cmd_line, this));
+}
+
+//ROI
+ProcessControlBlock* SmallShell::getLateProcess() //ROI
+{
+    for (ProcessControlBlock *pcb: jobs.timed_processes){
+        if (difftime(time(nullptr), pcb->getStartTime()) == pcb->duration){
+            //erase timed process from job list
+            jobs.removeJobById(pcb->getJobId());
+            return pcb;
+        }
+
+    }
+    return nullptr;
 }
 
 void SmallShell::executeCommand(string cmd_line) {
@@ -336,8 +351,8 @@ void JobsManager::killAllJobs() {
     }
 }
 
-void JobsManager::addJob(const Command &cmd, pid_t pid) {
-    addJob(ProcessControlBlock(maxIndex, pid, cmd.cmd_line));
+void JobsManager::addJob(const Command &cmd, pid_t pid, int duration) {
+    addJob(ProcessControlBlock(maxIndex, pid, cmd.cmd_line, duration));
 }
 void JobsManager::addJob(const ProcessControlBlock& pcb){
     removeFinishedJobs();
@@ -347,6 +362,10 @@ void JobsManager::addJob(const ProcessControlBlock& pcb){
     const_cast<ProcessControlBlock&>(pcb).setJobId(maxIndex);
     processes.insert(pair<job_id_t,
             ProcessControlBlock>(maxIndex++, pcb));
+
+    // ROI - if it is a timed process, i want to add it to the list after getting correct jobId.
+    // const casst issue..
+    if (pcb.duration!= -1) timed_processes.push_back(&pcb);
 
     //if process is stopped, handle it as such
     if (!pcb.isRunning()){
@@ -415,6 +434,10 @@ void ForegroundCommand::execute() {
     smash->setForegroundProcess(nullptr);
 
     smash->jobs.removeJobById(jobId);
+    // ROI - loop to remove timed process in case it ended before the timeout
+    for (auto it = smash->jobs.timed_processes.begin(); it != smash->jobs.timed_processes.end(); ++it){
+        if (jobId == (*it)->getJobId()) smash->jobs.timed_processes.erase(it);
+    }
 }
 
 BackgroundCommand::BackgroundCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cmd_line, smash) {
@@ -629,6 +652,69 @@ void CopyCommand::ReadCommand::execute() {
 
 CopyCommand::ReadCommand::~ReadCommand() {
     source.close();
+}
+// ROI - timeout command
+
+// to check - do we need to handle a scenario (error) where the inner command is a built-in command ??
+TimeoutCommand::TimeoutCommand(string cmd_line, SmallShell *smash) : Command(cmd_line, smash),
+backgroundRequest(_isBackgroundComamnd(cmd_line)) {
+    // trimming 1st word, saving number and saving the rest of the command
+    string trimmed_cmd = _trim(cmd_line);
+    unsigned short timeout_index = trimmed_cmd.find_first_of("timeout");
+    if (timeout_index != 0) INVALIDATE("smash error: timeout: invalid arguments");
+    string no_timeout_cmd = trimmed_cmd.substr(7, trimmed_cmd.length());
+    //string trimmed_no_timeout_cmd = _trim(no_timeout_cmd);
+    unsigned short digits_index = _trim(no_timeout_cmd).find_first_of(DIGITS);
+    if (digits_index != 0) INVALIDATE("smash error: timeout: invalid arguments");
+    unsigned short digits_end_index = _trim(no_timeout_cmd).find_first_of(' ');
+    string str_number = _trim(no_timeout_cmd).substr(digits_index, digits_end_index);
+    if (str_number.find_first_not_of(DIGITS) != std::string::npos) INVALIDATE("smash error: timeout: invalid arguments");
+    string inner_cmd_line = trimmed_cmd.substr(trimmed_cmd.find_first_of(str_number) + str_number.length(), trimmed_cmd.length());
+
+
+    //innerCommand = smash->CreateCommand(inner_cmd_line);
+    waitNumber = stoi(str_number);
+}
+/*
+void TimeoutCommand::execute() {
+    innerCommand->execute();
+
+    //change external pcb string to cmd_line
+
+    // sets of SIG_ALARM
+    alarm(waitNumber);
+}
+ */
+
+
+void TimeoutCommand::execute() {
+    //fork a son
+    pid_t pid = fork();
+    if (pid < 0) INVALIDATE("smash error: fork failed");
+    if (pid == 0){
+        if (setpgrp() < 0) INVALIDATE("smash error: setpgrp failed");
+
+        execl("/bin/bash", "/bin/bash", "-c", _removeBackgroundSign(inner_cmd_line).c_str(), NULL);
+    }
+
+    else{
+        // set the alarm signal
+        alarm(waitNumber);
+        //if !backgroundRequest then wait for son, inform smash that a foreground program is running
+        if (!backgroundRequest){
+            const job_id_t FG_JOB_ID = 0;
+            ProcessControlBlock foregroundPcb = ProcessControlBlock(FG_JOB_ID, pid, cmd_line, waitNumber);
+            smash->setForegroundProcess(&foregroundPcb);
+            smash->jobs.timed_processes.push_back(&foregroundPcb);
+            const int waitStatus = waitpid(pid, nullptr, WUNTRACED);
+            if (waitStatus < 0) INVALIDATE("smash error: waitpid failed");
+            smash->setForegroundProcess(nullptr);
+        }
+            //else add to jobs
+        else{
+            smash->jobs.addJob(*this, pid);
+        }
+    }
 }
 
 

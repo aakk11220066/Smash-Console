@@ -15,14 +15,18 @@ class ProcessControlBlock {
 private:
     //process data
     job_id_t jobId;
+
 public:
     void setJobId(job_id_t jobId);
+    //ROI - field for timed process
+    int duration;
 
 private:
     pid_t processId;
     bool running = true;
     const std::string creatingCommand;
     time_t startTime;
+
 public:
     time_t getStartTime() const;
 
@@ -79,9 +83,10 @@ private:
 public:
     ProcessControlBlock(const job_id_t jobId,
                         const pid_t processId,
-                        const std::string &creatingCommand);
+                        const std::string &creatingCommand, const int duration = -1);
 };
 
 std::ostream& operator<<(std::ostream& outstream, ProcessControlBlock& pcb);
+
 
 #endif //OS_HW1_PROCESSCONTROLBLOCK_H
