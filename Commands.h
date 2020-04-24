@@ -40,7 +40,7 @@ public:
     void addJob(const Command& cmd, pid_t pid);
     void addJob(const ProcessControlBlock& pcb);
     void printJobsList();
-    void killAllJobs();
+    void killAllJobs(); //FIXME: doesn't do anything
     void removeFinishedJobs();
     ProcessControlBlock* getJobById(job_id_t jobId);
     void removeJobById(job_id_t jobId);
@@ -87,7 +87,7 @@ public:
         return instance;
     }
 
-    ~SmallShell() = default;
+    ~SmallShell();
 
     void executeCommand(std::string cmd_line);
 
@@ -123,6 +123,7 @@ public:
 class BackgroundableCommand : public Command {
 private:
     bool backgroundRequest = false;
+    pid_t pid;
 
 public:
     BackgroundableCommand(string cmd_line, SmallShell* smash);
@@ -140,9 +141,10 @@ public:
     void executeBackgroundable() override;
 };
 
-class PipeCommand : public BackgroundableCommand {
+class PipeCommand : public BackgroundableCommand { //TODO: test PipeCommand, RedirectionCommand, and CopyCommand sent to background
 private:
     bool errPipe = false;
+    int pidFrom=-1, pidTo=-1;
 
 protected:
     unique_ptr<Command> commandFrom= nullptr, commandTo=nullptr;
@@ -150,7 +152,7 @@ protected:
 public:
     PipeCommand(std::string cmd_line, SmallShell* smash);
     PipeCommand(unique_ptr<Command> commandFrom, unique_ptr<Command> commandTo, SmallShell *smash);
-    virtual ~PipeCommand() = default;
+    virtual ~PipeCommand();
     void executeBackgroundable() override;
 };
 
@@ -159,13 +161,13 @@ private:
     bool append = false;
     short operatorPosition = -1;
     SmallShell* sanitizeInputs(SmallShell* smash);
-    class WriteCommand : public BackgroundableCommand{
+    class WriteCommand : public Command{
         std::ofstream sink;
         void writeToSink();
     public:
         explicit WriteCommand(string fileName, bool append, SmallShell* smash);
         virtual ~WriteCommand();
-        void executeBackgroundable() override;
+        void execute() override;
     };
 
 protected:
@@ -271,14 +273,13 @@ public:
 
 class CopyCommand : public RedirectionCommand {
 private:
-    SmallShell* init(SmallShell* smash);
-    class ReadCommand : public BackgroundableCommand{
+    class ReadCommand : public Command{
         std::ifstream source;
         void read();
     public:
         explicit ReadCommand(string fileName, SmallShell* smash);
         virtual ~ReadCommand();
-        void executeBackgroundable() override;
+        void execute() override;
     };
 public:
     CopyCommand(string cmd_line, SmallShell* smash);
