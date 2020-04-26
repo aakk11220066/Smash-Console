@@ -1,10 +1,14 @@
 #include <unistd.h>
-#include <string.h>
 #include <iostream>
+#include <string.h>
 #include <vector>
 #include <sstream>
+#include <memory>
 #include <sys/wait.h>
+#include <sys/types.h>
 #include <iomanip>
+#include <algorithm>
+#include <linux/limits.h>
 #include "Commands.h"
 
 using namespace std;
@@ -22,12 +26,15 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 #define FUNC_EXIT()
 #endif
 
-#define DEBUG_PRINT(err_msg) cerr << "DEBUG: " << err_msg
+#define DEBUG_PRINT(err_msg) cerr << "DEBUG: " << err_msg << endl
 #define DIGITS "1234567890"
 
+//TODO: if process killed, should kill all of its children
 #define EXEC(path, arg) \
     execvp((path), (arg));
 
+//TODO: if process is killed it should kill all of its children
+//TODO: Consider switching implementation for exception
 #define INVALIDATE(errMsg) \
     do {cerr << errMsg << endl; \
     invalid = true; \
@@ -106,24 +113,31 @@ SmallShell::SmallShell() : jobs(*this) {}
 * Creates and returns a pointer to Command class which matches the given command line (cmd_line)
 */
 std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
-    string cmd_s = _trim(string(cmd_line));
-    //Special commands
-    if (cmd_s.find('|') != string::npos) return std::unique_ptr<Command>(new PipeCommand(cmd_line, this));
-    else if (cmd_s.find('>') != string::npos) return std::unique_ptr<Command>(new RedirectionCommand(cmd_line, this));
-    else if (cmd_s.find("cp") == 0) return std::unique_ptr<Command>(new CopyCommand(cmd_line, this));
-    else if (cmd_s.find("timeout") == 0) return std::unique_ptr<Command>(new TimeoutCommand(cmd_line, this));
+    try {
+        string cmd_s = _trim(string(cmd_line));
 
-    //Ordinary commands
-    else if (cmd_s.find("chprompt") == 0) return std::unique_ptr<Command>(new ChpromptCommand(cmd_line, this));
-    else if (cmd_s.find("showpid") == 0) return std::unique_ptr<Command>(new ShowPidCommand(cmd_line, this));
-    else if (cmd_s.find("pwd") == 0) return std::unique_ptr<Command>(new GetCurrDirCommand(cmd_line, this));
-    else if (cmd_s.find("cd") == 0) return std::unique_ptr<Command>(new ChangeDirCommand(cmd_line, this));
-    else if (cmd_s.find("jobs") == 0) return std::unique_ptr<Command>(new JobsCommand(cmd_line, this));
-    else if (cmd_s.find("kill") == 0) return std::unique_ptr<Command>(new KillCommand(cmd_line, this));
-    else if (cmd_s.find("bg") == 0) return std::unique_ptr<Command>(new BackgroundCommand(cmd_line, this));
-    else if (cmd_s.find("fg") == 0) return std::unique_ptr<Command>(new ForegroundCommand(cmd_line, this));
-    else if (cmd_s.find("quit") == 0) return std::unique_ptr<Command>(new QuitCommand(cmd_line, this));
-    else return std::unique_ptr<Command>(new ExternalCommand(cmd_line, this));
+        //Special commands
+        if (cmd_s.find('|') != string::npos) return std::unique_ptr<Command>(new PipeCommand(cmd_line, this));
+        else if (cmd_s.find('>') != string::npos)
+            return std::unique_ptr<Command>(new RedirectionCommand(cmd_line, this));
+        else if (cmd_s.find("cp") == 0) return std::unique_ptr<Command>(new CopyCommand(cmd_line, this));
+        //else if (cmd_s.find("timeout") == 0) return std::unique_ptr<Command>(new TimeoutCommand(cmd_line, this)); DEBUG
+
+        //Ordinary commands
+        else if (cmd_s.find("chprompt") == 0) return std::unique_ptr<Command>(new ChpromptCommand(cmd_line, this));
+        else if (cmd_s.find("showpid") == 0) return std::unique_ptr<Command>(new ShowPidCommand(cmd_line, this));
+        else if (cmd_s.find("pwd") == 0) return std::unique_ptr<Command>(new GetCurrDirCommand(cmd_line, this));
+        else if (cmd_s.find("cd") == 0) return std::unique_ptr<Command>(new ChangeDirCommand(cmd_line, this));
+        else if (cmd_s.find("jobs") == 0) return std::unique_ptr<Command>(new JobsCommand(cmd_line, this));
+        else if (cmd_s.find("kill") == 0) return std::unique_ptr<Command>(new KillCommand(cmd_line, this));
+        else if (cmd_s.find("bg") == 0) return std::unique_ptr<Command>(new BackgroundCommand(cmd_line, this));
+        else if (cmd_s.find("fg") == 0) return std::unique_ptr<Command>(new ForegroundCommand(cmd_line, this));
+        else if (cmd_s.find("quit") == 0) return std::unique_ptr<Command>(new QuitCommand(cmd_line, this));
+        else return std::unique_ptr<Command>(new ExternalCommand(cmd_line, this));
+    } catch (SmashExceptions::InvalidArgumentsException& error){
+        cerr << error.what();
+        return nullptr;
+    }
 }
 
 //ROI
@@ -142,7 +156,7 @@ ProcessControlBlock* SmallShell::getLateProcess() //ROI
 
 void SmallShell::executeCommand(string cmd_line) {
     std::unique_ptr<Command> cmd = this -> CreateCommand(cmd_line);
-    if (!cmd->invalid) cmd->execute();
+    if (!cmd || !cmd->invalid) cmd->execute();
     //Please note that you must fork smash process for some commands (e.g., external commands....)
 }
 
@@ -187,14 +201,23 @@ void SmallShell::setForegroundProcess(const ProcessControlBlock *foregroundProce
     SmallShell::foregroundProcess = foregroundProcess;
 }
 
-Command::Command(string cmd_line, SmallShell* smash) : smash(smash), cmd_line(cmd_line) {
+SmallShell::~SmallShell() {
+    executeCommand("quit");
+}
+
+std::vector<std::string> initArgs(string cmd_line){
     const unsigned int MAX_ARGS = 20;
     char** argsArray = (char**) malloc(MAX_ARGS*sizeof(char*));
     const unsigned short numArgs = _parseCommandLine(_removeBackgroundSign(cmd_line), argsArray);
-    args = vector<const std::string> (argsArray, argsArray+numArgs);
+    std::vector<std::string> args = vector<std::string> (argsArray, argsArray+numArgs);
 
     for (unsigned short i=0; i<numArgs; ++i) free(argsArray[i]);
     free(argsArray);
+
+    return args;
+}
+Command::Command(string cmd_line, SmallShell* smash) : smash(smash), cmd_line(cmd_line) {
+    args = initArgs(cmd_line);
 }
 
 void ChpromptCommand::execute() {
@@ -264,21 +287,19 @@ void JobsManager::removeFinishedJobs() {
         int jobStatus;
         int sysCallStatus = waitpid(job.second.getProcessId(),&jobStatus,WNOHANG);
         if (WIFEXITED(jobStatus)) {
-            DEBUG_PRINT("process "<<job.second.getProcessId()<<" finished with exit status "<<WEXITSTATUS(jobStatus)<<endl);
             targets.push_back(&job.second);
         }
         if (sysCallStatus<0) {
+            DEBUG_PRINT("removeFinishedJobs waitpid failed with errno="<<errno);
             cerr << "smash error: waitpid failed" << endl;
             return;
         }
     }
     for (ProcessControlBlock* job : targets){
-        DEBUG_PRINT("Process number " << job->getJobId() << " finished, erasing records... "<<endl); //debug
         std::vector<ProcessControlBlock*>::iterator position =
                 find(waitingHeap.begin(), waitingHeap.end(), job);
         if (position != waitingHeap.end()) waitingHeap.erase(position);
         processes.erase(job->getJobId());
-        DEBUG_PRINT("...erased." << endl);
     }
 
     make_heap(waitingHeap.begin(), waitingHeap.end());
@@ -377,6 +398,7 @@ job_id_t JobsManager::resetMaxIndex() {
     while (maxIndex>1 && getJobById(maxIndex)){
         --maxIndex;
     }
+    return maxIndex;
 }
 
 KillCommand::KillCommand(string cmd_line, SmallShell* smash) : BuiltInCommand(cmd_line, smash){
@@ -482,17 +504,19 @@ void QuitCommand::execute() {
     exit(0);
 }
 
-ExternalCommand::ExternalCommand(string cmd_line, SmallShell *smash) : Command(cmd_line, smash),
-    backgroundRequest(_isBackgroundComamnd(cmd_line)) {}
+BackgroundableCommand::BackgroundableCommand(string cmd_line, SmallShell *smash) : Command(cmd_line, smash),
+       backgroundRequest(_isBackgroundComamnd(cmd_line)) {}
 
-void ExternalCommand::execute() {
+void BackgroundableCommand::execute() {
     //fork a son
-    pid_t pid = fork();
+    pid = fork();
     if (pid < 0) INVALIDATE("smash error: fork failed");
     if (pid == 0){
         if (setpgrp() < 0) INVALIDATE("smash error: setpgrp failed");
 
-        execl("/bin/bash", "/bin/bash", "-c", _removeBackgroundSign(cmd_line).c_str(), NULL);
+        DEBUG_PRINT("forked son for backgroundableCommand with pid="<<getpid());
+        executeBackgroundable();
+        exit(0);
     }
 
     else{
@@ -502,7 +526,10 @@ void ExternalCommand::execute() {
             ProcessControlBlock foregroundPcb = ProcessControlBlock(FG_JOB_ID, pid, cmd_line);
             smash->setForegroundProcess(&foregroundPcb);
             const int waitStatus = waitpid(pid, nullptr, WUNTRACED);
-            if (waitStatus < 0) INVALIDATE("smash error: waitpid failed");
+            if (waitStatus < 0) {
+                DEBUG_PRINT("backgroundablecommand waitpid failed with pid="<<pid<<", waitStatus="<<waitStatus<<", and errno="<<errno);
+                INVALIDATE("smash error: waitpid failed");
+            }
             smash->setForegroundProcess(nullptr);
         }
         //else add to jobs
@@ -514,7 +541,7 @@ void ExternalCommand::execute() {
 
 
 
-PipeCommand::PipeCommand(std::string cmd_line, SmallShell *smash) : Command(cmd_line, smash) {
+PipeCommand::PipeCommand(std::string cmd_line, SmallShell *smash) : BackgroundableCommand(cmd_line, smash) {
     //TODO: handle verbosity
     //TODO: verify that if not given 2 commands then need to invalidate
     unsigned short pipeIndex = cmd_line.find_first_of('|');
@@ -526,48 +553,80 @@ PipeCommand::PipeCommand(std::string cmd_line, SmallShell *smash) : Command(cmd_
     const string cmd_lineFrom = cmd_line.substr(0, pipeIndex);
     const string cmd_lineTo = cmd_line.substr(pipeIndex+1+(errPipe? 1:0));
 
-    bool backgroundCommand = _isBackgroundComamnd(cmd_line);
+    /*bool backgroundCommand = _isBackgroundComamnd(cmd_line);
 
     commandFrom = smash->CreateCommand(cmd_lineFrom + (backgroundCommand? "&" : ""));
+    commandTo = smash->CreateCommand(cmd_lineTo + (backgroundCommand? "&" : ""));*/
+
+    commandFrom = smash->CreateCommand(cmd_lineFrom);
     commandTo = smash->CreateCommand(cmd_lineTo);
     assert(commandTo && commandFrom);
     invalid = commandFrom->invalid && commandTo->invalid;
 }
 
 PipeCommand::PipeCommand(std::unique_ptr<Command> commandFrom, std::unique_ptr<Command> commandTo, SmallShell* smash) :
-        Command(cmd_line, smash), commandFrom(std::move(commandFrom)), commandTo(std::move(commandTo)){}
+        BackgroundableCommand(cmd_line, smash), commandFrom(std::move(commandFrom)), commandTo(std::move(commandTo)){}
 
-void PipeCommand::execute() {
-    int pidFrom, pidTo;
+void PipeCommand::executeBackgroundable() {
     int pipeSides[2];
     if (pipe(pipeSides)) INVALIDATE("smash error: pipe failed");
 
     if ((pidFrom = fork()) < 0) INVALIDATE("smash error: fork failed");
     if (!pidFrom){
+        DEBUG_PRINT("opened child process for CommandFrom with pid "<<getpid());
         //close pipe read side
         if (close(pipeSides[0])) INVALIDATE("smash error: close failed");
         //replace stdout with pipe write side
-        if (dup2(pipeSides[1], errPipe? STDERR_FILENO : STDOUT_FILENO)) INVALIDATE("smash error: dup2 failed");
+        if (dup2(pipeSides[1], errPipe? STDERR_FILENO : STDOUT_FILENO)<0) INVALIDATE("smash error: dup2 failed");
         //execute commandFrom
         commandFrom->execute();
-        //close pipe
-        if (close(pipeSides[0])) INVALIDATE("smash error: close failed");
+        exit(0);
     }
     else{
         if ((pidTo = fork()) < 0) INVALIDATE("smash error: fork failed");
         if (!pidTo){
+            DEBUG_PRINT("opened child process for CommandTo with pid "<<getpid());
             //close pipe write side
             if (close(pipeSides[1])) INVALIDATE("smash error: close failed");
             //replace stdin with pipe read side
-            if (dup2(pipeSides[0], STDIN_FILENO)) INVALIDATE("smash error: dup2 failed");
+            if (dup2(pipeSides[0], STDIN_FILENO)<0) INVALIDATE("smash error: dup2 failed");
             //execute commandTo
-            commandTo->execute(); //FIXME: should this wait until after pidFrom finishes executing to ensure read from pipe is complete?
-            //close pipe
-            if (close(pipeSides[0])) INVALIDATE("smash error: close failed");
+            commandTo->execute();
+            exit(0);
         }
         else{
             //parent
             if (close(pipeSides[0]) || close(pipeSides[1])) INVALIDATE("smash error: close failed");
+            //TODO: if one of the forks fail, kill the other process
+            /*if (0>waitpid(pidFrom, nullptr, NO_SETTINGS)) {
+                DEBUG_PRINT("pidFrom waitpid failed with errno="<<errno);
+                INVALIDATE("smash error: waitpid failed");
+            }
+            DEBUG_PRINT("finished waiting for commandFrom.");
+            if (0>waitpid(pidTo, nullptr, NO_SETTINGS)) {
+                DEBUG_PRINT("pidTo waitpid failed with errno="<<errno);
+                INVALIDATE("smash error: waitpid failed");
+            }
+            DEBUG_PRINT("finished waiting for commandTo.");*/
+            pidFrom = pidTo = -1;
+            DEBUG_PRINT("set pidFrom and pidTo to -1");
+            DEBUG_PRINT("sending confirmation signal to pidFrom, got "<<kill(pidFrom, 0));
+            DEBUG_PRINT("sending confirmation signal to pidTo, got "<<kill(pidTo, 0));
+        }
+    }
+}
+
+PipeCommand::~PipeCommand() {
+    if (pidFrom != -1) {
+        if (kill(pidFrom, SIGKILL) < 0) {
+            DEBUG_PRINT("pidFrom = "<<pidFrom<<" and kill failed with errno = "<<errno);
+            INVALIDATE("smash error: kill failed");
+        }
+    }
+    if (pidTo != -1) {
+        if (kill(pidTo, SIGKILL) < 0) {
+            DEBUG_PRINT("pidTo = "<<pidFrom<<" and kill failed with errno = "<<errno);
+            INVALIDATE("smash error: kill failed");
         }
     }
 }
@@ -579,17 +638,19 @@ unsigned short indicator(bool condition){
 RedirectionCommand::RedirectionCommand(unique_ptr<Command> commandFrom, string filename, bool append, SmallShell *smash) try :
     PipeCommand(std::move(commandFrom), unique_ptr<Command>(new WriteCommand(filename, append, smash)), smash) {}
     catch (SmashExceptions::FileOpenException& e){
-        INVALIDATE("smash error: redirection: invalid arguments");
+        DEBUG_PRINT("Failed to open file "<<filename<<".  errno = "<<errno);
+        throw SmashExceptions::InvalidArgumentsException("redirection");
         //TODO: verify that if bad filename given need to invalidate
     }
 
+#define OPERATOR_POSITION (cmd_line.find_first_of('>'))
 RedirectionCommand::RedirectionCommand(std::string cmd_line, SmallShell *smash) :
-        RedirectionCommand(smash->CreateCommand(cmd_line.substr(0,cmd_line.find_first_of('>'))),
-                           cmd_line.substr(operatorPosition+1
-                                +indicator(cmd_line.at(1+operatorPosition == '>'))),
-                           cmd_line.at(1+operatorPosition) == '>',
+        RedirectionCommand(smash->CreateCommand(cmd_line.substr(0,OPERATOR_POSITION)),
+                           _trim(cmd_line.substr(OPERATOR_POSITION+1
+                                +indicator(cmd_line.at(1+OPERATOR_POSITION == '>')))),
+                           cmd_line.at(1+OPERATOR_POSITION) == '>',
                     sanitizeInputs(smash)) {} //TODO: handle verbosity
-
+#undef OPERATOR_POSITION
 
 
 void RedirectionCommand::execute() {
@@ -598,20 +659,30 @@ void RedirectionCommand::execute() {
 
 SmallShell *RedirectionCommand::sanitizeInputs(SmallShell *smash) {
     operatorPosition = cmd_line.find_first_of('>');
+    DEBUG_PRINT("operatorPosition="<<operatorPosition);
     //ensure a string representing a filename was specified (validation that it is a filename in redirected ctor)
-    if (!(cmd_line.size() > operatorPosition+1)) INVALIDATE("smash error: redirection: invalid arguments");
+    if (cmd_line.size() > operatorPosition+1) {
+        DEBUG_PRINT("cmd_line.size() > operatorPosition+1 was not fulfilled because cmd_line.size()="<<cmd_line.size()<<" and operatorPosition+1="<<operatorPosition+1);
+        throw SmashExceptions::InvalidArgumentsException("redirection");
+    }
+    return smash;
 }
 
 RedirectionCommand::WriteCommand::WriteCommand(string fileName, bool append, SmallShell* smash) :
-    BuiltInCommand("write_into "+fileName, smash){
+    Command("write_into "+fileName, smash){
 
     sink.open(fileName, append? std::ofstream::app : std::ofstream::trunc);
-    if (sink.failbit) throw SmashExceptions::FileOpenException();
+    if (sink.failbit & sink.rdstate()) throw SmashExceptions::FileOpenException();
 }
 
 void RedirectionCommand::WriteCommand::execute() {
     char buf;
-    while (read(STDIN_FILENO, &buf, 1) > 0) sink.write(&buf, 1);
+    int readStatus;
+    while ((readStatus=read(STDIN_FILENO, &buf, 1)) > 0) {
+        sink.write(&buf, 1);
+        sink.flush();
+        DEBUG_PRINT("Wrote letter "<<buf);
+    }
 }
 
 RedirectionCommand::WriteCommand::~WriteCommand() {
@@ -619,13 +690,19 @@ RedirectionCommand::WriteCommand::~WriteCommand() {
 }
 
 CopyCommand::CopyCommand(string cmd_line, SmallShell *smash) try :
-    backgroundRequest(_isBackgroundComamnd(cmd_line)),
-    RedirectionCommand(unique_ptr<Command>(new ReadCommand(args[1], init(smash))),
-                       args[2],
-                       false,
-                       smash) {} //TODO: verify that if input is not 2 filepaths then need to invalidate
+    RedirectionCommand(unique_ptr<Command>(
+        new ReadCommand(initArgs(cmd_line).at(1), smash)), //FIXME: could be faster by initializing args only once?
+        initArgs(cmd_line).at(2),
+        false,
+        smash) {
+
+        this->cmd_line = cmd_line;
+        args = initArgs(cmd_line);
+        if (args.size() -1 != 2) throw SmashExceptions::InvalidArgumentsException("cp");
+        backgroundRequest = _isBackgroundComamnd(cmd_line);
+    } //TODO: verify that if input is not 2 filepaths then need to invalidate
     catch (SmashExceptions::FileOpenException& e){
-        INVALIDATE("smash error: cp: invalid arguments");
+        throw SmashExceptions::InvalidArgumentsException("cp");
     }
 
 
@@ -633,21 +710,20 @@ void CopyCommand::execute() {
     RedirectionCommand::execute();
 }
 
-SmallShell *CopyCommand::init(SmallShell *smash) {
-    //TODO: figure out how to run init after Command ctor but before sending possibly erroneous arguments to RedirectionCommand ctor (unless certain it doesn't matter).  Possibly just catch IndexOutOfBounds-like exception from bad access to args vector (would need to switch to .at instead of operator[])
-    if (args.size() -1 != 2) INVALIDATE("smash error: cp: invalid arguments");
-    return smash;
-}
-
 CopyCommand::ReadCommand::ReadCommand(string fileName, SmallShell *smash) :
-    BuiltInCommand("read_from "+fileName, smash) {
+    Command("read_from "+fileName, smash) {
 
     source.open(fileName);
-    if (source.failbit) throw SmashExceptions::FileOpenException();
+    if (source.failbit & source.rdstate()) throw SmashExceptions::FileOpenException();
 }
 
-void CopyCommand::ReadCommand::execute() {
-    do cout<<source.get(); while (source.good());
+
+void CopyCommand::ReadCommand::execute() { //TODO: test with empty source file
+    for (char nextLetter = source.get(); source.good() && nextLetter != EOF; nextLetter=source.get()){
+        cout<<nextLetter;
+        DEBUG_PRINT("Read letter "<<nextLetter);
+    }
+    cout.flush();
 }
 
 CopyCommand::ReadCommand::~ReadCommand() {
@@ -715,6 +791,12 @@ void TimeoutCommand::execute() {
             smash->jobs.addJob(*this, pid);
         }
     }
+}
+
+ExternalCommand::ExternalCommand(string cmd_line, SmallShell *smash) : BackgroundableCommand(cmd_line, smash) {}
+
+void ExternalCommand::executeBackgroundable() {
+    execl("/bin/bash", "/bin/bash", "-c", _removeBackgroundSign(cmd_line).c_str(), NULL);
 }
 
 

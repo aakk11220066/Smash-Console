@@ -5,8 +5,11 @@
 #include <list>
 #include <string>
 #include <map>
+#include <memory>
 #include <signal.h>
 #include <fstream>
+#include <memory>
+#include <assert.h>
 #include "ProcessControlBlock.h"
 
 #define COMMAND_ARGS_MAX_LENGTH (200)
@@ -44,7 +47,7 @@ public:
     void addJob(const Command& cmd, pid_t pid, int duration = -1);
     void addJob(const ProcessControlBlock& pcb);
     void printJobsList();
-    void killAllJobs();
+    void killAllJobs(); //FIXME: doesn't do anything
     void removeFinishedJobs();
     ProcessControlBlock* getJobById(job_id_t jobId);
     void removeJobById(job_id_t jobId);
@@ -89,7 +92,7 @@ public:
         return instance;
     }
 
-    ~SmallShell() = default;
+    ~SmallShell();
 
     void executeCommand(std::string cmd_line);
 
@@ -101,11 +104,11 @@ public:
 
 class Command {
 protected:
-    std::vector<const std::string> args;
+    std::vector<std::string> args;
     SmallShell* const smash;
-    bool verbose = true;
 
 public:
+    bool verbose = true;
     bool invalid = false;
     std::string cmd_line;
 
@@ -122,25 +125,40 @@ public:
     virtual ~BuiltInCommand() = default;
 };
 
-class ExternalCommand : public Command {
+class BackgroundableCommand : public Command {
 private:
     bool backgroundRequest = false;
-    string commandText;
+    pid_t pid;
 
+public:
+    BackgroundableCommand(string cmd_line, SmallShell* smash);
+    virtual ~BackgroundableCommand() = default;
+    void execute();
+    virtual void executeBackgroundable() = 0;
+};
+
+class ExternalCommand : public BackgroundableCommand {
+private:
+    void runExec();
 public:
     ExternalCommand(string cmd_line, SmallShell* smash);
     virtual ~ExternalCommand() = default;
-    void execute() override;
+    void executeBackgroundable() override;
 };
 
-class PipeCommand : public Command {
-    unique_ptr<Command> commandFrom, commandTo;
+class PipeCommand : public BackgroundableCommand { //TODO: test PipeCommand, RedirectionCommand, and CopyCommand sent to background
+private:
     bool errPipe = false;
+    int pidFrom=-1, pidTo=-1;
+
+protected:
+    unique_ptr<Command> commandFrom= nullptr, commandTo=nullptr;
+
 public:
     PipeCommand(std::string cmd_line, SmallShell* smash);
     PipeCommand(unique_ptr<Command> commandFrom, unique_ptr<Command> commandTo, SmallShell *smash);
-    virtual ~PipeCommand() = default;
-    void execute() override;
+    virtual ~PipeCommand();
+    void executeBackgroundable() override;
 };
 
 class RedirectionCommand : public PipeCommand {
@@ -148,16 +166,21 @@ private:
     bool append = false;
     short operatorPosition = -1;
     SmallShell* sanitizeInputs(SmallShell* smash);
-    class WriteCommand : public BuiltInCommand{
+    class WriteCommand : public Command{
         std::ofstream sink;
+        void writeToSink();
     public:
         explicit WriteCommand(string fileName, bool append, SmallShell* smash);
         virtual ~WriteCommand();
         void execute() override;
     };
+
+protected:
+    bool backgroundRequest = false;
 public:
     RedirectionCommand(std::string cmd_line, SmallShell* smash);
-    RedirectionCommand(unique_ptr<Command> commandFrom, string filename, bool append, SmallShell* smash);
+    RedirectionCommand(unique_ptr<Command> commandFrom, string filename, bool append,
+            SmallShell* smash);
     virtual ~RedirectionCommand() = default;
     void execute() override;
 };
@@ -253,13 +276,11 @@ public:
     void execute() override;
 };
 
-//TODO: handle backgrounding
 class CopyCommand : public RedirectionCommand {
 private:
-    bool backgroundRequest;
-    SmallShell* init(SmallShell* smash);
-    class ReadCommand : public BuiltInCommand{
+    class ReadCommand : public Command{
         std::ifstream source;
+        void read();
     public:
         explicit ReadCommand(string fileName, SmallShell* smash);
         virtual ~ReadCommand();
@@ -304,7 +325,16 @@ namespace SmashExceptions{
     class SignalSendException : public Exception {};
     class NoStoppedJobsException : public Exception {};
     class FileOpenException : public Exception{};
+    class InvalidArgumentsException;
 }
 
+class SmashExceptions::InvalidArgumentsException : public SmashExceptions::Exception{
+    string errMsg;
+public:
+    InvalidArgumentsException(string sender) : errMsg("smash error: "+sender+": invalid arguments"){}
+    const char* what(){
+        return errMsg.c_str();
+    }
+};
 
 #endif //SMASH_COMMAND_H_
