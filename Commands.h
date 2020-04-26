@@ -7,6 +7,8 @@
 #include <map>
 #include <signal.h>
 #include <fstream>
+#include <memory>
+#include <assert.h>
 #include "ProcessControlBlock.h"
 
 #define COMMAND_ARGS_MAX_LENGTH (200)
@@ -99,7 +101,7 @@ public:
 
 class Command {
 protected:
-    std::vector<const std::string> args;
+    std::vector<std::string> args;
     SmallShell* const smash;
 
 public:

@@ -1,11 +1,13 @@
 #include <unistd.h>
-#include <string.h>
 #include <iostream>
+#include <string.h>
 #include <vector>
 #include <sstream>
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <iomanip>
+#include <algorithm>
+#include <linux/limits.h>
 #include "Commands.h"
 
 using namespace std;
@@ -29,6 +31,7 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 #define EXEC(path, arg) \
     execvp((path), (arg));
 
+//TODO: if process is killed it should kill all of its children
 //TODO: Consider switching implementation for exception
 #define INVALIDATE(errMsg) \
     do {cerr << errMsg << endl; \
@@ -185,11 +188,11 @@ SmallShell::~SmallShell() {
     executeCommand("quit");
 }
 
-std::vector<const std::string> initArgs(string cmd_line){
+std::vector<std::string> initArgs(string cmd_line){
     const unsigned int MAX_ARGS = 20;
     char** argsArray = (char**) malloc(MAX_ARGS*sizeof(char*));
     const unsigned short numArgs = _parseCommandLine(_removeBackgroundSign(cmd_line), argsArray);
-    std::vector<const std::string> args = vector<const std::string> (argsArray, argsArray+numArgs);
+    std::vector<std::string> args = vector<std::string> (argsArray, argsArray+numArgs);
 
     for (unsigned short i=0; i<numArgs; ++i) free(argsArray[i]);
     free(argsArray);
