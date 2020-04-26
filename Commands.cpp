@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <string.h>
 #include <iostream>
 #include <string.h>
 #include <vector>
@@ -73,8 +74,7 @@ int _parseCommandLine(string cmd_line, char** args) {
 
 bool _isBackgroundComamnd(basic_string<char, char_traits<char>, allocator<char>> cmd_line) {
       const string str(cmd_line);
-      bool result = str[str.find_last_not_of(WHITESPACE)] == '&';
-      return result;
+      return str[str.find_last_not_of(WHITESPACE)] == '&';
 }
 
 string _removeBackgroundSign(string cmd_line) {
@@ -401,6 +401,7 @@ void JobsManager::addJob(const Command &cmd, pid_t pid, int duration) {
 }
 void JobsManager::addJob(const ProcessControlBlock& pcb){
     removeFinishedJobs();
+
     resetMaxIndex();
     const_cast<ProcessControlBlock&>(pcb).resetStartTime();
 
@@ -419,7 +420,6 @@ job_id_t JobsManager::resetMaxIndex() {
     while (maxIndex>0 && !getJobById(maxIndex)){
         --maxIndex;
     }
-    DEBUG_PRINT("after call maxIndex="<<maxIndex);
     return maxIndex;
 }
 
@@ -539,7 +539,7 @@ BackgroundableCommand::BackgroundableCommand(string cmd_line, SmallShell *smash)
 void BackgroundableCommand::execute() {
     //fork a son
     pid = fork();
-    if (pid < 0) SmashExceptions::SyscallException("fork");
+    if (pid < 0) throw SmashExceptions::SyscallException("fork");
     if (pid == 0){
         DEBUG_PRINT("Forked a son for backgroundablecommand "<<cmd_line<<" with pid="<<getpid());
         if (setpgrp() < 0) throw SmashExceptions::SyscallException("setpgrp");
