@@ -3,6 +3,7 @@
 #include <iostream>
 #include <vector>
 #include <sstream>
+#include <memory>
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <iomanip>
@@ -25,7 +26,7 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 
 #define DEBUG_PRINT(err_msg) cerr << "DEBUG: " << err_msg << endl
 
-
+//TODO: if process killed, should kill all of its children
 #define EXEC(path, arg) \
     execvp((path), (arg));
 

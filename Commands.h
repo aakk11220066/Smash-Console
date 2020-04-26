@@ -5,6 +5,7 @@
 #include <list>
 #include <string>
 #include <map>
+#include <memory>
 #include <signal.h>
 #include <fstream>
 #include "ProcessControlBlock.h"
