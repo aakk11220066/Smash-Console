@@ -6,12 +6,15 @@
 
 ProcessControlBlock::ProcessControlBlock(const job_id_t jobId,
                                          const pid_t processId,
-                                         const std::string& creatingCommand) :
+                                         const std::string& creatingCommand,
+                                         const int duration) :
 
                                          jobId(jobId),
                                          creatingCommand(creatingCommand),
                                          startTime(time(nullptr)),
-                                         processId(processId){
+                                         processId(processId),
+                                         //ROI field for timed processes
+                                         duration(duration){
 
 }
 

@@ -68,6 +68,10 @@ namespace SignalHandlers {
         //send SIGKILL
         if (kill(lateProcess->getProcessId(), SIGKILL) < 0) {
             cerr << "smash error: kill failed" << endl;
+            // ROI erase late process from list
+            for (auto it = smash->jobs.timed_processes.begin(); it != smash->jobs.timed_processes.end(); ++it){
+                if (lateProcess->getJobId() == (*it)->getJobId()) smash->jobs.timed_processes.erase(it);
+            }
             return;
         }
 
@@ -76,6 +80,12 @@ namespace SignalHandlers {
 }
 
 int main(int argc, char* argv[]) {
+    //set sigaction struct
+    struct sigaction action;
+    action.sa_handler = SignalHandlers::alarmHandler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = SA_RESTART;
+
     DEBUG_PRINT("this pid is " << getpid()<<endl);
     if(signal(SIGTSTP , SignalHandlers::ctrlZHandler)==SIG_ERR) {
         perror("smash error: failed to set ctrl-Z handler");
@@ -83,7 +93,7 @@ int main(int argc, char* argv[]) {
     if(signal(SIGINT , SignalHandlers::ctrlCHandler)==SIG_ERR) {
         perror("smash error: failed to set ctrl-C handler");
     }
-    if(signal(SIGALRM , SignalHandlers::alarmHandler)==SIG_ERR) {
+    if(sigaction(SIGALRM , &action, NULL)==SIG_ERR) {
         perror("smash error: failed to set alarm signal handler");
     }
 

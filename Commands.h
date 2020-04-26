@@ -26,6 +26,9 @@ using std::string;
 using std::unique_ptr;
 
 class JobsManager {
+public:
+    //ROI - list of timed processes
+    std::vector<ProcessControlBlock*> timed_processes;
 private:
     //Dictionary mapping job_id to process
     std::map<job_id_t, ProcessControlBlock> processes;
@@ -40,7 +43,8 @@ private:
 public:
     JobsManager(SmallShell& smash);
     ~JobsManager() = default;
-    void addJob(const Command& cmd, pid_t pid);
+    // ROI
+    void addJob(const Command& cmd, pid_t pid, int duration = -1);
     void addJob(const ProcessControlBlock& pcb);
     void printJobsList();
     void killAllJobs(); //FIXME: doesn't do anything
@@ -68,9 +72,7 @@ public:
     void setForegroundProcess(const ProcessControlBlock *foregroundProcess);
 
 public:
-    ProcessControlBlock* getLateProcess(){ //FIXME: implement
-        return nullptr;
-    }
+    ProcessControlBlock* getLateProcessId(); //ROI
     const std::string &getLastPwd() const;
     void setLastPwd(const std::string &lastPwd);
     bool sendSignal(signal_t signum, job_id_t jobId);
@@ -297,6 +299,21 @@ private:
 public:
     ChpromptCommand(string cmd_line, SmallShell* smash);
     virtual ~ChpromptCommand() = default;
+    void execute() override;
+};
+
+
+// ROI - timeout command
+
+class TimeoutCommand : public Command {
+    string inner_cmd_line;
+private:
+    bool backgroundRequest = false;
+    int waitNumber;
+public:
+    TimeoutCommand(std::string cmd_line, SmallShell* smash);
+    //PipeCommand(unique_ptr<Command> commandFrom, unique_ptr<Command> commandTo, SmallShell *smash);
+    virtual ~TimeoutCommand() = default;
     void execute() override;
 };
 
