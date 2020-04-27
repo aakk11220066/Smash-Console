@@ -61,20 +61,37 @@ namespace SignalHandlers {
     }
 
     void alarmHandler(int sig_num) {
+        // do we need to print we got an alarm anyway?
         cout << "smash: got an alarm" << endl;
+        ProcessControlBlock* lateProcess;
+        //in case of foreground process
+        if ((shell->getIsForgroundTimed()) &&
+        (difftime(time(nullptr), shell->getForegroundProcess()->getStartTime()) == shell->getForegroundProcess()->duration)){
+        lateProcess = const_cast<ProcessControlBlock*>(shell->getForegroundProcess());
+        shell->setIsForgroundTimed(false);
+            //send SIGKILL
+            if (kill(lateProcess->getProcessId(), SIGKILL) < 0) {
+                cerr << "smash error: kill failed" << endl;
+                return;
+            }
+            cout << "smash: " << lateProcess->getCreatingCommand() << " timed out!" << endl;
+            return;
+        }
+
 
         //find command that cause alarm
-        ProcessControlBlock* lateProcess = shell->getLateProcess();
+        else lateProcess = shell->getLateProcess();
 
         //send SIGKILL
-        if (kill(lateProcess->getProcessId(), SIGKILL) < 0) {
-          cerr << "smash error: kill failed" << endl;
-          return;
-          }
+        if (lateProcess) {
+            if (kill(lateProcess->getProcessId(), SIGKILL) < 0) {
+                cerr << "smash error: kill failed" << endl;
+                return;
+            }
 
-        cout << "smash: " << lateProcess->getCreatingCommand() << " timed out!" << endl;
-        shell->RemoveLateProcess(lateProcess->getProcessId());
-
+            cout << "smash: " << lateProcess->getCreatingCommand() << " timed out!" << endl;
+            shell->RemoveLateProcess(lateProcess->getProcessId());
+        }
     }
 
 }

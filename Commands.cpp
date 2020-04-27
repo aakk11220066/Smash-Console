@@ -159,7 +159,7 @@ void SmallShell::RemoveLateProcess(pid_t pid){
     ProcessControlBlock* target = jobs.getJobById(pid);
     assert(target);
 // erase from timed_processes list
-    std::vector<ProcessControlBlock*>::iterator position =
+    std::list<ProcessControlBlock*>::iterator position =
             find(jobs.timed_processes.begin(), jobs.timed_processes.end(), target);
     if (jobs.timed_processes.end() != position) jobs.timed_processes.erase(position);
 // erase from map
@@ -209,6 +209,11 @@ const ProcessControlBlock *SmallShell::getForegroundProcess() const {
     return foregroundProcess;
 }
 
+//ROI
+ProcessControlBlock *SmallShell::getForegroundProcess1() const {
+    return const_cast<ProcessControlBlock*>(foregroundProcess);
+}
+
 void SmallShell::setForegroundProcess(const ProcessControlBlock *foregroundProcess) {
     SmallShell::foregroundProcess = foregroundProcess;
 }
@@ -216,6 +221,15 @@ void SmallShell::setForegroundProcess(const ProcessControlBlock *foregroundProce
 SmallShell::~SmallShell() {
     executeCommand("quit");
 }
+
+bool SmallShell::getIsForgroundTimed() const {
+    return isForgroundTimed;
+}
+
+void SmallShell::setIsForgroundTimed(bool value) {
+    isForgroundTimed = value;
+}
+
 
 std::vector<std::string> initArgs(string cmd_line){
     const unsigned int MAX_ARGS = 20;
@@ -396,10 +410,6 @@ void JobsManager::addJob(const ProcessControlBlock& pcb){
     processes.insert(pair<job_id_t,
             ProcessControlBlock>(maxIndex++, pcb));
 
-    // ROI - if it is a timed process, i want to add it to the list after getting correct jobId.
-    // const cast issue..
-    //if (pcb.duration!= -1) timed_processes.push_back(pcb);
-
     //if process is stopped, handle it as such
     if (!pcb.isRunning()){
         pauseJob(pcb.getJobId());
@@ -547,6 +557,9 @@ void BackgroundableCommand::execute() {
         //else add to jobs
         else{
             smash->jobs.addJob(*this, pid);
+            ProcessControlBlock* target = smash->jobs.getJobById(pid);
+            smash->jobs.timed_processes.push_back(target);
+
         }
     }
 }
@@ -782,10 +795,13 @@ void TimeoutCommand::execute() {
         if (!backgroundRequest){
             const job_id_t FG_JOB_ID = 0;
             ProcessControlBlock foregroundPcb = ProcessControlBlock(FG_JOB_ID, pid, cmd_line, waitNumber);
-            smash->jobs.timed_processes.push_back(&foregroundPcb);
             smash->setForegroundProcess(&foregroundPcb);
+            ProcessControlBlock* timed_pcb = smash->getForegroundProcess1();
+            smash->setIsForgroundTimed(true);
+            //smash->jobs.timed_processes.push_back(timed_pcb);
             const int waitStatus = waitpid(pid, nullptr, WUNTRACED);
             if (waitStatus < 0) INVALIDATE("smash error: waitpid failed");
+            smash->setIsForgroundTimed(false);
             smash->setForegroundProcess(nullptr);
         }
             //else add to jobs

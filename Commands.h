@@ -28,7 +28,7 @@ using std::unique_ptr;
 class JobsManager {
 public:
     //ROI - list of timed processes
-    std::vector<ProcessControlBlock*> timed_processes;
+    std::list<ProcessControlBlock*> timed_processes;
 private:
     //Dictionary mapping job_id to process
     std::map<job_id_t, ProcessControlBlock> processes;
@@ -61,13 +61,15 @@ class SmallShell {
 private:
     SmallShell();
 
+    bool isForgroundTimed = false;
     std::string smashPrompt = "smash> ";
 
     std::string lastPwd = "";
-public:
     const ProcessControlBlock* foregroundProcess = nullptr;
 public:
     const ProcessControlBlock *getForegroundProcess() const;
+    ProcessControlBlock *getForegroundProcess1() const;
+
 
     void setForegroundProcess(const ProcessControlBlock *foregroundProcess);
 
@@ -77,6 +79,8 @@ public:
     const std::string &getLastPwd() const;
     void setLastPwd(const std::string &lastPwd);
     bool sendSignal(signal_t signum, job_id_t jobId);
+    bool getIsForgroundTimed() const; //ROI
+    void setIsForgroundTimed(bool value); //ROI
 
     JobsManager jobs;
 
