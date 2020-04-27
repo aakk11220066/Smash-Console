@@ -27,7 +27,7 @@ namespace SignalHandlers {
             cout << "smash: process " << foregroundProcess->getProcessId() << " was stopped" << endl;
 
             //log that process is stopped
-            const_cast<ProcessControlBlock*>(foregroundProcess)->setRunning(false);
+            const_cast<ProcessControlBlock *>(foregroundProcess)->setRunning(false);
 
             //add foreground command to jobs
             shell->jobs.addJob(*foregroundProcess);
@@ -44,6 +44,7 @@ namespace SignalHandlers {
             //DEBUG
         }
     }
+
 
     void ctrlCHandler(int sig_num) {
         cout << "smash: got ctrl-C" << endl;
@@ -67,44 +68,47 @@ namespace SignalHandlers {
 
         //send SIGKILL
         if (kill(lateProcess->getProcessId(), SIGKILL) < 0) {
-            cerr << "smash error: kill failed" << endl;
-            // ROI erase late process from list
-            for (auto it = smash->jobs.timed_processes.begin(); it != smash->jobs.timed_processes.end(); ++it){
-                if (lateProcess->getJobId() == (*it)->getJobId()) smash->jobs.timed_processes.erase(it);
-            }
-            return;
-        }
+          cerr << "smash error: kill failed" << endl;
+          return;
+          }
 
         cout << "smash: " << lateProcess->getCreatingCommand() << " timed out!" << endl;
+        shell->RemoveLateProcess(lateProcess->getProcessId());
+
     }
+
 }
 
-int main(int argc, char* argv[]) {
-    //set sigaction struct
-    struct sigaction action;
-    action.sa_handler = SignalHandlers::alarmHandler;
-    sigemptyset(&action.sa_mask);
-    action.sa_flags = SA_RESTART;
+    int main(int argc, char *argv[]) {
+        //set sigaction struct
 
-    DEBUG_PRINT("this pid is " << getpid()<<endl);
-    if(signal(SIGTSTP , SignalHandlers::ctrlZHandler)==SIG_ERR) {
-        perror("smash error: failed to set ctrl-Z handler");
-    }
-    if(signal(SIGINT , SignalHandlers::ctrlCHandler)==SIG_ERR) {
-        perror("smash error: failed to set ctrl-C handler");
-    }
-    if(sigaction(SIGALRM , &action, NULL)==SIG_ERR) {
-        perror("smash error: failed to set alarm signal handler");
-    }
+        struct sigaction action;
+        action.sa_handler = SignalHandlers::alarmHandler;
+        sigemptyset(&action.sa_mask);
+        action.sa_flags = SA_RESTART;
 
-    SmallShell& smash = SmallShell::getInstance();
-    shell = &smash;
-    while(true) {
-        std::cout << smash.getSmashPrompt();
-        std::string cmd_line;
-        std::getline(std::cin, cmd_line);
-        smash.jobs.removeFinishedJobs();
-        smash.executeCommand(cmd_line);
+
+        DEBUG_PRINT("this pid is " << getpid() << endl);
+        if (signal(SIGTSTP, SignalHandlers::ctrlZHandler) == SIG_ERR) {
+            perror("smash error: failed to set ctrl-Z handler");
+        }
+        if (signal(SIGINT, SignalHandlers::ctrlCHandler) == SIG_ERR) {
+            perror("smash error: failed to set ctrl-C handler");
+        }
+
+        if(sigaction(SIGALRM , &action, nullptr) == -1) {
+            perror("smash error: failed to set alarm signal handler");
+        }
+
+
+        SmallShell &smash = SmallShell::getInstance();
+        shell = &smash;
+        while (true) {
+            std::cout << smash.getSmashPrompt();
+            std::string cmd_line;
+            std::getline(std::cin, cmd_line);
+            smash.jobs.removeFinishedJobs();
+            smash.executeCommand(cmd_line);
+        }
+        return 0;
     }
-    return 0;
-}

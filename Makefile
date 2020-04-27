@@ -29,3 +29,4 @@ zip: $(SRCS) $(HDRS)
 clean:
 	rm -rf $(SMASH_BIN) $(OBJS) $(TESTS_OUTPUTS) 
 	rm -rf $(SUBMITTERS).zip
+

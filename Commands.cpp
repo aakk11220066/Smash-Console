@@ -121,7 +121,7 @@ std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
         else if (cmd_s.find('>') != string::npos)
             return std::unique_ptr<Command>(new RedirectionCommand(cmd_line, this));
         else if (cmd_s.find("cp") == 0) return std::unique_ptr<Command>(new CopyCommand(cmd_line, this));
-        //else if (cmd_s.find("timeout") == 0) return std::unique_ptr<Command>(new TimeoutCommand(cmd_line, this)); DEBUG
+        else if (cmd_s.find("timeout") == 0) return std::unique_ptr<Command>(new TimeoutCommand(cmd_line, this)); //DEBUG
 
         //Ordinary commands
         else if (cmd_s.find("chprompt") == 0) return std::unique_ptr<Command>(new ChpromptCommand(cmd_line, this));
@@ -141,6 +141,7 @@ std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
 }
 
 //ROI
+
 ProcessControlBlock* SmallShell::getLateProcess() //ROI
 {
     for (ProcessControlBlock *pcb: jobs.timed_processes){
@@ -152,6 +153,17 @@ ProcessControlBlock* SmallShell::getLateProcess() //ROI
 
     }
     return nullptr;
+}
+
+void SmallShell::RemoveLateProcess(pid_t pid){
+    ProcessControlBlock* target = jobs.getJobById(pid);
+    assert(target);
+// erase from timed_processes list
+    std::vector<ProcessControlBlock*>::iterator position =
+            find(jobs.timed_processes.begin(), jobs.timed_processes.end(), target);
+    if (jobs.timed_processes.end() != position) jobs.timed_processes.erase(position);
+// erase from map
+    jobs.removeJobById(pid);
 }
 
 void SmallShell::executeCommand(string cmd_line) {
@@ -385,8 +397,8 @@ void JobsManager::addJob(const ProcessControlBlock& pcb){
             ProcessControlBlock>(maxIndex++, pcb));
 
     // ROI - if it is a timed process, i want to add it to the list after getting correct jobId.
-    // const casst issue..
-    if (pcb.duration!= -1) timed_processes.push_back(&pcb);
+    // const cast issue..
+    //if (pcb.duration!= -1) timed_processes.push_back(pcb);
 
     //if process is stopped, handle it as such
     if (!pcb.isRunning()){
@@ -738,30 +750,21 @@ backgroundRequest(_isBackgroundComamnd(cmd_line)) {
     string trimmed_cmd = _trim(cmd_line);
     unsigned short timeout_index = trimmed_cmd.find_first_of("timeout");
     if (timeout_index != 0) INVALIDATE("smash error: timeout: invalid arguments");
-    string no_timeout_cmd = trimmed_cmd.substr(7, trimmed_cmd.length());
+    string no_timeout_cmd = trimmed_cmd.substr(7, trimmed_cmd.length()+1);
     //string trimmed_no_timeout_cmd = _trim(no_timeout_cmd);
     unsigned short digits_index = _trim(no_timeout_cmd).find_first_of(DIGITS);
     if (digits_index != 0) INVALIDATE("smash error: timeout: invalid arguments");
     unsigned short digits_end_index = _trim(no_timeout_cmd).find_first_of(' ');
     string str_number = _trim(no_timeout_cmd).substr(digits_index, digits_end_index);
     if (str_number.find_first_not_of(DIGITS) != std::string::npos) INVALIDATE("smash error: timeout: invalid arguments");
-    string inner_cmd_line = trimmed_cmd.substr(trimmed_cmd.find_first_of(str_number) + str_number.length(), trimmed_cmd.length());
+    inner_cmd_line = trimmed_cmd.substr(trimmed_cmd.find_first_of(str_number) + str_number.length()+1, trimmed_cmd.length()+1);
 
 
     //innerCommand = smash->CreateCommand(inner_cmd_line);
+    cout << inner_cmd_line << endl; //DEBUG
     waitNumber = stoi(str_number);
+
 }
-/*
-void TimeoutCommand::execute() {
-    innerCommand->execute();
-
-    //change external pcb string to cmd_line
-
-    // sets of SIG_ALARM
-    alarm(waitNumber);
-}
- */
-
 
 void TimeoutCommand::execute() {
     //fork a son
@@ -769,7 +772,6 @@ void TimeoutCommand::execute() {
     if (pid < 0) INVALIDATE("smash error: fork failed");
     if (pid == 0){
         if (setpgrp() < 0) INVALIDATE("smash error: setpgrp failed");
-
         execl("/bin/bash", "/bin/bash", "-c", _removeBackgroundSign(inner_cmd_line).c_str(), NULL);
     }
 
@@ -780,8 +782,8 @@ void TimeoutCommand::execute() {
         if (!backgroundRequest){
             const job_id_t FG_JOB_ID = 0;
             ProcessControlBlock foregroundPcb = ProcessControlBlock(FG_JOB_ID, pid, cmd_line, waitNumber);
-            smash->setForegroundProcess(&foregroundPcb);
             smash->jobs.timed_processes.push_back(&foregroundPcb);
+            smash->setForegroundProcess(&foregroundPcb);
             const int waitStatus = waitpid(pid, nullptr, WUNTRACED);
             if (waitStatus < 0) INVALIDATE("smash error: waitpid failed");
             smash->setForegroundProcess(nullptr);

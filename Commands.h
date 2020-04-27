@@ -64,7 +64,7 @@ private:
     std::string smashPrompt = "smash> ";
 
     std::string lastPwd = "";
-
+public:
     const ProcessControlBlock* foregroundProcess = nullptr;
 public:
     const ProcessControlBlock *getForegroundProcess() const;
@@ -72,7 +72,8 @@ public:
     void setForegroundProcess(const ProcessControlBlock *foregroundProcess);
 
 public:
-    ProcessControlBlock* getLateProcessId(); //ROI
+    void RemoveLateProcess(const pid_t); //ROI
+    ProcessControlBlock* getLateProcess(); //ROI
     const std::string &getLastPwd() const;
     void setLastPwd(const std::string &lastPwd);
     bool sendSignal(signal_t signum, job_id_t jobId);
@@ -311,8 +312,7 @@ private:
     bool backgroundRequest = false;
     int waitNumber;
 public:
-    TimeoutCommand(std::string cmd_line, SmallShell* smash);
-    //PipeCommand(unique_ptr<Command> commandFrom, unique_ptr<Command> commandTo, SmallShell *smash);
+    TimeoutCommand(string cmd_line, SmallShell* smash);
     virtual ~TimeoutCommand() = default;
     void execute() override;
 };
