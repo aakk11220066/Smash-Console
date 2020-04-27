@@ -145,9 +145,8 @@ std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
 ProcessControlBlock* SmallShell::getLateProcess() //ROI
 {
     for (ProcessControlBlock *pcb: jobs.timed_processes){
+
         if (difftime(time(nullptr), pcb->getStartTime()) == pcb->duration){
-            //erase timed process from job list
-            jobs.removeJobById(pcb->getJobId());
             return pcb;
         }
 
@@ -155,16 +154,20 @@ ProcessControlBlock* SmallShell::getLateProcess() //ROI
     return nullptr;
 }
 
-void SmallShell::RemoveLateProcess(pid_t pid){
-    ProcessControlBlock* target = jobs.getJobById(pid);
-    assert(target);
-// erase from timed_processes list
-    std::list<ProcessControlBlock*>::iterator position =
-            find(jobs.timed_processes.begin(), jobs.timed_processes.end(), target);
-    if (jobs.timed_processes.end() != position) jobs.timed_processes.erase(position);
-// erase from map
-    jobs.removeJobById(pid);
+void SmallShell::RemoveLateProcess(job_id_t jobId){
+    // erase from map
+    jobs.removeJobById(jobId);
+    //remove from list
+    for (ProcessControlBlock *pcb: jobs.timed_processes){
+        //cout << pid << endl << pcb->getProcessId() << endl;
+        if (pcb->getJobId() == jobId) {
+            jobs.timed_processes.remove(pcb);
+            return;
+
+        }
+    }
 }
+
 
 void SmallShell::executeCommand(string cmd_line) {
     std::unique_ptr<Command> cmd = this -> CreateCommand(cmd_line);
@@ -370,6 +373,14 @@ void JobsManager::removeJobById(job_id_t jobId) {
     make_heap(waitingHeap.begin(), waitingHeap.end());
     //remove from map
     processes.erase(jobId);
+
+    /*
+    // remove from timed_processes list
+    for (ProcessControlBlock* pcb : smash.jobs.timed_processes){
+        if (pcb->getJobId() == jobId) timed_processes.remove(pcb);
+    }
+     */
+
 }
 
 void JobsManager::pauseJob(job_id_t jobId) {
@@ -380,7 +391,7 @@ void JobsManager::pauseJob(job_id_t jobId) {
     push_heap(waitingHeap.begin(), waitingHeap.end());
 }
 
-JobsManager::JobsManager(SmallShell &smash) : smash(smash) {}
+JobsManager::JobsManager(SmallShell &smash) : smash(smash) {};
 
 ProcessControlBlock *JobsManager::getLastStoppedJob() {
     if (waitingHeap.empty()) throw SmashExceptions::NoStoppedJobsException();
@@ -396,6 +407,8 @@ void JobsManager::killAllJobs() {
         bool signalStatus = smash.sendSignal(SIGKILL, pcbPair.first);
         assert (signalStatus);
     }
+    // ROI erase also all timed processes
+    smash.jobs.timed_processes.clear();
 }
 
 void JobsManager::addJob(const Command &cmd, pid_t pid, int duration) {
@@ -796,7 +809,6 @@ void TimeoutCommand::execute() {
             const job_id_t FG_JOB_ID = 0;
             ProcessControlBlock foregroundPcb = ProcessControlBlock(FG_JOB_ID, pid, cmd_line, waitNumber);
             smash->setForegroundProcess(&foregroundPcb);
-            ProcessControlBlock* timed_pcb = smash->getForegroundProcess1();
             smash->setIsForgroundTimed(true);
             //smash->jobs.timed_processes.push_back(timed_pcb);
             const int waitStatus = waitpid(pid, nullptr, WUNTRACED);
@@ -807,6 +819,11 @@ void TimeoutCommand::execute() {
             //else add to jobs
         else{
             smash->jobs.addJob(*this, pid);
+            // add process to list
+            ProcessControlBlock *foregroundPcb2 = smash->jobs.getLastJob();
+            foregroundPcb2->duration = waitNumber;
+            foregroundPcb2->setStartTime(time(nullptr));
+            smash->jobs.timed_processes.push_back(foregroundPcb2);
         }
     }
 }

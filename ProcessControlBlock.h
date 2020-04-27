@@ -29,6 +29,7 @@ private:
 
 public:
     time_t getStartTime() const;
+    void setStartTime(time_t new_time); //ROI
 
     pid_t getProcessId() const;
 
@@ -71,6 +72,7 @@ public:
     bool isRunning() const;
 
     const std::string &getCreatingCommand() const;
+    //void setCreatingCommand(const std::string command);
 
 private:
 

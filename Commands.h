@@ -74,7 +74,7 @@ public:
     void setForegroundProcess(const ProcessControlBlock *foregroundProcess);
 
 public:
-    void RemoveLateProcess(const pid_t); //ROI
+    void RemoveLateProcess(const job_id_t); //ROI
     ProcessControlBlock* getLateProcess(); //ROI
     const std::string &getLastPwd() const;
     void setLastPwd(const std::string &lastPwd);

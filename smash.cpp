@@ -90,7 +90,11 @@ namespace SignalHandlers {
             }
 
             cout << "smash: " << lateProcess->getCreatingCommand() << " timed out!" << endl;
-            shell->RemoveLateProcess(lateProcess->getProcessId());
+            // general remove from job list
+            //shell->jobs.removeJobById(lateProcess->getJobId());
+            shell->RemoveLateProcess(lateProcess->getJobId());
+
+
         }
     }
 
