@@ -105,24 +105,25 @@ SmallShell::SmallShell() : jobs(*this) {}
 */
 std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
     string cmd_s = _trim(string(cmd_line));
+    string opcode = cmd_s.substr(0,cmd_s.find_first_of(WHITESPACE));
 
     //Special commands
     if (cmd_s.find('|') != string::npos) return std::unique_ptr<Command>(new PipeCommand(cmd_line, this));
     else if (cmd_s.find('>') != string::npos)
         return std::unique_ptr<Command>(new RedirectionCommand(cmd_line, this));
-    else if (cmd_s.find("cp") == 0) return std::unique_ptr<Command>(new CopyCommand(cmd_line, this));
-    else if (cmd_s.find("timeout") == 0) return std::unique_ptr<Command>(new TimeoutCommand(cmd_line, this)); //DEBUG
+    else if (("cp") == opcode) return std::unique_ptr<Command>(new CopyCommand(cmd_line, this));
+    else if (("timeout") == opcode) return std::unique_ptr<Command>(new TimeoutCommand(cmd_line, this)); //DEBUG
 
     //Ordinary commands
-    else if (cmd_s.find("chprompt") == 0) return std::unique_ptr<Command>(new ChpromptCommand(cmd_line, this));
-    else if (cmd_s.find("showpid") == 0) return std::unique_ptr<Command>(new ShowPidCommand(cmd_line, this));
-    else if (cmd_s.find("pwd") == 0) return std::unique_ptr<Command>(new GetCurrDirCommand(cmd_line, this));
-    else if (cmd_s.find("cd") == 0) return std::unique_ptr<Command>(new ChangeDirCommand(cmd_line, this));
-    else if (cmd_s.find("jobs") == 0) return std::unique_ptr<Command>(new JobsCommand(cmd_line, this));
-    else if (cmd_s.find("kill") == 0) return std::unique_ptr<Command>(new KillCommand(cmd_line, this));
-    else if (cmd_s.find("bg") == 0) return std::unique_ptr<Command>(new BackgroundCommand(cmd_line, this));
-    else if (cmd_s.find("fg") == 0) return std::unique_ptr<Command>(new ForegroundCommand(cmd_line, this));
-    else if (cmd_s.find("quit") == 0) return std::unique_ptr<Command>(new QuitCommand(cmd_line, this));
+    else if (("chprompt") == opcode) return std::unique_ptr<Command>(new ChpromptCommand(cmd_line, this));
+    else if (("showpid") == opcode) return std::unique_ptr<Command>(new ShowPidCommand(cmd_line, this));
+    else if (("pwd") == opcode) return std::unique_ptr<Command>(new GetCurrDirCommand(cmd_line, this));
+    else if (("cd") == opcode) return std::unique_ptr<Command>(new ChangeDirCommand(cmd_line, this));
+    else if (("jobs") == opcode) return std::unique_ptr<Command>(new JobsCommand(cmd_line, this));
+    else if (("kill") == opcode) return std::unique_ptr<Command>(new KillCommand(cmd_line, this));
+    else if (("bg") == opcode) return std::unique_ptr<Command>(new BackgroundCommand(cmd_line, this));
+    else if (("fg") == opcode) return std::unique_ptr<Command>(new ForegroundCommand(cmd_line, this));
+    else if (("quit") == opcode) return std::unique_ptr<Command>(new QuitCommand(cmd_line, this));
     else return std::unique_ptr<Command>(new ExternalCommand(cmd_line, this));
 }
 
@@ -157,7 +158,7 @@ void SmallShell::executeCommand(string cmd_line) {
         std::unique_ptr<Command> cmd = this->CreateCommand(cmd_line);
         if (!cmd || !cmd->invalid) cmd->execute();
     } catch (SmashExceptions::Exception& error){
-        cerr << error.what();
+        cerr << error.what() << endl;
     }
 }
 
@@ -279,6 +280,7 @@ ChangeDirCommand::ChangeDirCommand(string cmd_line, SmallShell* smash) : BuiltIn
 void ChangeDirCommand::execute() {
     if (args.size() -1 > 1) throw SmashExceptions::TooManyArgumentsException("cd");
 
+    //TODO: verify that this is the required exception message
     if (args.size() -1 < 1) throw SmashExceptions::TooFewArgumentsException("cd");
 
     assert(smash);
@@ -297,6 +299,7 @@ void ChangeDirCommand::execute() {
     throw SmashExceptions::SyscallException("chdir");
 }
 
+//TODO: verify that JobsCommand should print out the time since command was started as opposed to run time
 JobsCommand::JobsCommand(string cmd_line, SmallShell* smash) : BuiltInCommand(cmd_line, smash) {}
 
 void JobsCommand::execute() {
@@ -451,6 +454,9 @@ void KillCommand::execute() {
 
 BuiltInCommand::BuiltInCommand(string cmd_line, SmallShell* smash) : Command(_removeBackgroundSign(cmd_line), smash) {}
 
+//TODO: test fg with no arguments (check that maximal jobId selected)
+//TODO: test fg with stopped process
+//TODO: test to make sure fg removes job from jobs list
 ForegroundCommand::ForegroundCommand(string cmd_line, SmallShell* smash) : BuiltInCommand(cmd_line, smash) {
     try{
         if (args.size() - 1 > 1) throw std::invalid_argument("Too many args");
@@ -485,6 +491,7 @@ void ForegroundCommand::execute() {
     }
 }
 
+//TODO: make bg return "there is no stopped jobs to resume" when all of background is running and no arguments given
 BackgroundCommand::BackgroundCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cmd_line, smash) {
     //sanitize inputs
     //set jobId = args[0] or lastStoppedCommand if none specified
@@ -566,7 +573,7 @@ void BackgroundableCommand::execute() {
 }
 
 
-
+//TODO: pipe command should redirect signals to children
 PipeCommand::PipeCommand(std::string cmd_line, SmallShell *smash) : BackgroundableCommand(cmd_line, smash) {
     //TODO: verify that if not given 2 commands then need to invalidate
     unsigned short pipeIndex = cmd_line.find_first_of('|');
@@ -602,7 +609,7 @@ void PipeCommand::executeBackgroundable() {
         if (close(pipeSides[0])) throw SmashExceptions::SyscallException("close");
         //replace stdout with pipe write side
         if (dup2(pipeSides[1], errPipe? STDERR_FILENO : STDOUT_FILENO)<0) throw SmashExceptions::SyscallException("dup2");
-        //execute commandFrom
+        //execute commandFrom //TODO: if command is showpid, needs to print original smash pid
         commandFrom->execute();
         exit(0);
     }
@@ -646,6 +653,7 @@ unsigned short indicator(bool condition){
     return condition? 1 : 0;
 }
 
+//TODO: RedirectionCommand should not fork first command if first command is builtin?
 RedirectionCommand::RedirectionCommand(unique_ptr<Command> commandFrom, string filename, bool append, SmallShell *smash) try :
     PipeCommand(std::move(commandFrom), unique_ptr<Command>(new WriteCommand(filename, append, smash)), smash) {}
     catch (SmashExceptions::FileOpenException& e){
