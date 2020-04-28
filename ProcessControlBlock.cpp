@@ -89,6 +89,10 @@ ProcessControlBlock::~ProcessControlBlock() {
     DEBUG_PRINT("...killed process with id "<<getProcessId()<<".");*/
 }
 
+void ProcessControlBlock::resetStartTime() {
+    startTime = time(nullptr);
+}
+
 std::ostream& operator<<(std::ostream &outstream, ProcessControlBlock &pcb) {
     return outstream << pcb.getCreatingCommand() << " : " << pcb.getProcessId();
 }

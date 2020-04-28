@@ -74,6 +74,7 @@ public:
 
     void setForegroundProcess(const ProcessControlBlock *foregroundProcess);
 
+    pid_t smashPid;
 public:
     void RemoveLateProcess(const pid_t); //ROI
     ProcessControlBlock* getLateProcess(); //ROI

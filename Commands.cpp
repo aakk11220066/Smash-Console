@@ -98,7 +98,7 @@ string _removeBackgroundSign(string cmd_line) {
 
 
 
-SmallShell::SmallShell() : jobs(*this) {}
+SmallShell::SmallShell() : jobs(*this), smashPid(getpid()) {}
 
 /**
 * Creates and returns a pointer to Command class which matches the given command line (cmd_line)
@@ -249,7 +249,7 @@ ChpromptCommand::ChpromptCommand(string cmd_line, SmallShell* smash) :
 ShowPidCommand::ShowPidCommand(string cmd_line, SmallShell* smash) : BuiltInCommand(cmd_line, smash) {}
 
 void ShowPidCommand::execute() {
-    cout << "smash pid is " << getpid() << endl;
+    cout << "smash pid is " << smash->smashPid << endl;
 }
 
 GetCurrDirCommand::GetCurrDirCommand(string cmd_line, SmallShell* smash) : BuiltInCommand(cmd_line, smash) {}
@@ -299,7 +299,6 @@ void ChangeDirCommand::execute() {
     throw SmashExceptions::SyscallException("chdir");
 }
 
-//TODO: verify that JobsCommand should print out the time since command was started as opposed to run time
 JobsCommand::JobsCommand(string cmd_line, SmallShell* smash) : BuiltInCommand(cmd_line, smash) {}
 
 void JobsCommand::execute() {
@@ -402,8 +401,8 @@ void JobsManager::addJob(const Command &cmd, pid_t pid, int duration) {
 }
 void JobsManager::addJob(const ProcessControlBlock& pcb){
     removeFinishedJobs();
-
     resetMaxIndex();
+    const_cast<ProcessControlBlock&>(pcb).resetStartTime();
 
     const_cast<ProcessControlBlock&>(pcb).setJobId(++maxIndex);
     processes.insert(pair<job_id_t,
@@ -491,7 +490,7 @@ void ForegroundCommand::execute() {
     }
 }
 
-//TODO: make bg return "there is no stopped jobs to resume" when all of background is running and no arguments given
+//TODO: make bg return "there is no stopped jobs to resume" when all of background is running and no arguments given (management of waitingHeap faulty) - lines that add/remove from the heap are 325, 367, 377
 BackgroundCommand::BackgroundCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cmd_line, smash) {
     //sanitize inputs
     //set jobId = args[0] or lastStoppedCommand if none specified
@@ -576,6 +575,7 @@ void BackgroundableCommand::execute() {
 //TODO: pipe command should redirect signals to children
 PipeCommand::PipeCommand(std::string cmd_line, SmallShell *smash) : BackgroundableCommand(cmd_line, smash) {
     //TODO: verify that if not given 2 commands then need to invalidate
+    //TODO: verify that if one of the commands fails need to return error of that command
     unsigned short pipeIndex = cmd_line.find_first_of('|');
     //sanitize inputs
     if (!(cmd_line.size() > pipeIndex+1)) throw SmashExceptions::InvalidArgumentsException("pipe");
@@ -609,7 +609,7 @@ void PipeCommand::executeBackgroundable() {
         if (close(pipeSides[0])) throw SmashExceptions::SyscallException("close");
         //replace stdout with pipe write side
         if (dup2(pipeSides[1], errPipe? STDERR_FILENO : STDOUT_FILENO)<0) throw SmashExceptions::SyscallException("dup2");
-        //execute commandFrom //TODO: if command is showpid, needs to print original smash pid
+        //execute commandFrom //TODO: test if command is showpid, needs to print original smash pid
         commandFrom->execute();
         exit(0);
     }
@@ -715,6 +715,7 @@ CopyCommand::CopyCommand(string cmd_line, SmallShell *smash) try :
 
         this->cmd_line = cmd_line;
         args = initArgs(cmd_line);
+        //TODO: verify that if copy does not receive 2 arguments need to throw invalid arguments
         if (args.size() -1 != 2) throw SmashExceptions::InvalidArgumentsException("cp");
         backgroundRequest = _isBackgroundComamnd(cmd_line);
     } //TODO: verify that if input is not 2 filepaths then need to invalidate
