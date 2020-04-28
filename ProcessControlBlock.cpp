@@ -3,15 +3,23 @@
 //
 
 #include "ProcessControlBlock.h"
+#include <signal.h>
+#include <iostream>
+#include <cstring>
+
+#define DEBUG_PRINT(err_msg) std::cerr << "DEBUG: " << err_msg << std::endl //debug
 
 ProcessControlBlock::ProcessControlBlock(const job_id_t jobId,
                                          const pid_t processId,
-                                         const std::string& creatingCommand) :
+                                         const std::string& creatingCommand,
+                                         const int duration) :
 
                                          jobId(jobId),
                                          creatingCommand(creatingCommand),
                                          startTime(time(nullptr)),
-                                         processId(processId){
+                                         processId(processId),
+                                         //ROI field for timed processes
+                                         duration(duration){
 
 }
 
@@ -27,36 +35,8 @@ const std::string &ProcessControlBlock::getCreatingCommand() const {
     return creatingCommand;
 }
 
-ProcessControlBlock* ProcessControlBlock::getYoungestSon() const {
-    return youngestSon;
-}
-
-ProcessControlBlock* ProcessControlBlock::getYoungerBrother() const {
-    return youngerBrother;
-}
-
-ProcessControlBlock* ProcessControlBlock::getOlderBrother() const {
-    return olderBrother;
-}
-
-ProcessControlBlock* ProcessControlBlock::getFather() const {
-    return father;
-}
-
 void ProcessControlBlock::setRunning(bool running) {
     ProcessControlBlock::running = running;
-}
-
-void ProcessControlBlock::setYoungestSon(ProcessControlBlock& youngestSon) {
-    ProcessControlBlock::youngestSon = &youngestSon;
-}
-
-void ProcessControlBlock::setYoungerBrother(ProcessControlBlock &youngerBrother) {
-    ProcessControlBlock::youngerBrother = &youngerBrother;
-}
-
-void ProcessControlBlock::setOlderBrother(ProcessControlBlock &olderBrother) {
-    ProcessControlBlock::olderBrother = &olderBrother;
 }
 
 bool ProcessControlBlock::operator==(const ProcessControlBlock &rhs) const {
@@ -97,6 +77,16 @@ time_t ProcessControlBlock::getStartTime() const {
 
 void ProcessControlBlock::setJobId(job_id_t jobId) {
     ProcessControlBlock::jobId = jobId;
+}
+
+std::ostream& operator<<(std::ostream &outstream, ProcessControlBlock &pcb);
+ProcessControlBlock::~ProcessControlBlock() {
+    /*DEBUG_PRINT("Abruptly killing process "<<*this<<" with process id "<<getProcessId()<<"...");
+    if (kill(getProcessId(), SIGKILL) < 0 && errno!=3) {
+        DEBUG_PRINT("pid = " + std::to_string(getProcessId()) + " and kill failed with errno = "+std::to_string(errno) + " which is "+std::strerror(errno));
+        std::cerr << "smash error: kill failed" << std::endl;
+    }
+    DEBUG_PRINT("...killed process with id "<<getProcessId()<<".");*/
 }
 
 std::ostream& operator<<(std::ostream &outstream, ProcessControlBlock &pcb) {

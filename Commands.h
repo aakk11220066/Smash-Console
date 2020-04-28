@@ -8,11 +8,14 @@
 #include <memory>
 #include <signal.h>
 #include <fstream>
+#include <memory>
+#include <assert.h>
 #include "ProcessControlBlock.h"
 
 #define COMMAND_ARGS_MAX_LENGTH (200)
 #define COMMAND_MAX_ARGS (20)
 #define HISTORY_MAX_RECORDS (50)
+#define DEBUG_PRINT(err_msg) std::cerr << "DEBUG: " << err_msg << std::endl
 
 typedef unsigned int job_id_t;
 typedef unsigned int signal_t;
@@ -24,6 +27,9 @@ using std::string;
 using std::unique_ptr;
 
 class JobsManager {
+public:
+    //ROI - list of timed processes
+    std::list<ProcessControlBlock*> timed_processes;
 private:
     //Dictionary mapping job_id to process
     std::map<job_id_t, ProcessControlBlock> processes;
@@ -32,16 +38,17 @@ private:
     std::vector<ProcessControlBlock*> waitingHeap;
 
     SmallShell& smash;
-    job_id_t maxIndex = 1;
+    job_id_t maxIndex = 0;
 
     job_id_t resetMaxIndex();
 public:
     JobsManager(SmallShell& smash);
     ~JobsManager() = default;
-    void addJob(const Command& cmd, pid_t pid);
+    // ROI
+    void addJob(const Command& cmd, pid_t pid, int duration = -1);
     void addJob(const ProcessControlBlock& pcb);
     void printJobsList();
-    void killAllJobs(); //FIXME: doesn't do anything
+    void killAllJobs();
     void removeFinishedJobs();
     ProcessControlBlock* getJobById(job_id_t jobId);
     void removeJobById(job_id_t jobId);
@@ -55,23 +62,26 @@ class SmallShell {
 private:
     SmallShell();
 
+    bool isForgroundTimed = false;
     std::string smashPrompt = "smash> ";
 
     std::string lastPwd = "";
-
     const ProcessControlBlock* foregroundProcess = nullptr;
 public:
     const ProcessControlBlock *getForegroundProcess() const;
+    ProcessControlBlock *getForegroundProcess1() const;
+
 
     void setForegroundProcess(const ProcessControlBlock *foregroundProcess);
 
 public:
-    ProcessControlBlock* getLateProcess(){ //FIXME: implement
-        return nullptr;
-    }
+    void RemoveLateProcess(const pid_t); //ROI
+    ProcessControlBlock* getLateProcess(); //ROI
     const std::string &getLastPwd() const;
     void setLastPwd(const std::string &lastPwd);
     bool sendSignal(signal_t signum, job_id_t jobId);
+    bool getIsForgroundTimed() const; //ROI
+    void setIsForgroundTimed(bool value); //ROI
 
     JobsManager jobs;
 
@@ -100,7 +110,7 @@ public:
 
 class Command {
 protected:
-    std::vector<const std::string> args;
+    std::vector<std::string> args;
     SmallShell* const smash;
 
 public:
@@ -123,9 +133,10 @@ public:
 
 class BackgroundableCommand : public Command {
 private:
-    bool backgroundRequest = false;
     pid_t pid;
 
+protected:
+    bool backgroundRequest = false;
 public:
     BackgroundableCommand(string cmd_line, SmallShell* smash);
     virtual ~BackgroundableCommand() = default;
@@ -142,7 +153,7 @@ public:
     void executeBackgroundable() override;
 };
 
-class PipeCommand : public BackgroundableCommand { //TODO: test PipeCommand, RedirectionCommand, and CopyCommand sent to background
+class PipeCommand : public BackgroundableCommand {
 private:
     bool errPipe = false;
     int pidFrom=-1, pidTo=-1;
@@ -154,7 +165,8 @@ public:
     PipeCommand(std::string cmd_line, SmallShell* smash);
     PipeCommand(unique_ptr<Command> commandFrom, unique_ptr<Command> commandTo, SmallShell *smash);
     virtual ~PipeCommand();
-    void executeBackgroundable() override;
+    void executeBackgroundable() override
+    ;
 };
 
 class RedirectionCommand : public PipeCommand {
@@ -171,8 +183,6 @@ private:
         void execute() override;
     };
 
-protected:
-    bool backgroundRequest = false;
 public:
     RedirectionCommand(std::string cmd_line, SmallShell* smash);
     RedirectionCommand(unique_ptr<Command> commandFrom, string filename, bool append,
@@ -217,9 +227,7 @@ public:
 class CommandsHistory {
  protected:
   class CommandHistoryEntry {
-	  // TODO: Add your data members
   };
- // TODO: Add your data members
  public:
   CommandsHistory();
   ~CommandsHistory() = default;
@@ -228,7 +236,6 @@ class CommandsHistory {
 };
 
 class HistoryCommand : public BuiltInCommand {
- // TODO: Add your data members
  public:
   HistoryCommand(const char* cmd_line, CommandsHistory* history);
   virtual ~HistoryCommand() = default;
@@ -298,24 +305,82 @@ public:
     void execute() override;
 };
 
-// TODO: add timeoutCommand class
+
+// ROI - timeout command
+
+class TimeoutCommand : public Command {
+    string inner_cmd_line;
+private:
+    bool backgroundRequest = false;
+    int waitNumber;
+public:
+    TimeoutCommand(string cmd_line, SmallShell* smash);
+    virtual ~TimeoutCommand() = default;
+    void execute() override;
+};
+
 
 
 namespace SmashExceptions{
-    class Exception : public std::exception {};
-    class SignalSendException : public Exception {};
-    class NoStoppedJobsException : public Exception {};
-    class FileOpenException : public Exception{};
+    class Exception;
+    class SignalSendException;
+    class NoStoppedJobsException;
+    class FileOpenException;
     class InvalidArgumentsException;
+    class SyscallException;
+    class TooManyArgumentsException;
+    class TooFewArgumentsException;
 }
 
-class SmashExceptions::InvalidArgumentsException : public SmashExceptions::Exception{
-    string errMsg;
+class SmashExceptions::Exception : public std::exception{
+private:
+    std::string errMsg;
+    std::string sender;
+
 public:
-    InvalidArgumentsException(string sender) : errMsg("smash error: "+sender+": invalid arguments"){}
-    const char* what(){
-        return errMsg.c_str();
+    explicit Exception(const std::string& sender, const std::string& errMsg) : sender(sender),
+        errMsg(errMsg){}
+
+    virtual const char* what(){
+        return ("smash error: "+sender+": "+errMsg).c_str();
     }
 };
 
+class SmashExceptions::SignalSendException : public SmashExceptions::Exception{
+public:
+    SignalSendException() : SmashExceptions::Exception("",""){};
+};
+class SmashExceptions::NoStoppedJobsException : public SmashExceptions::Exception{
+public:
+    NoStoppedJobsException() : Exception("",""){};
+};
+class SmashExceptions::FileOpenException : public SmashExceptions::Exception{
+public:
+    FileOpenException() : Exception("",""){};
+};
+class SmashExceptions::InvalidArgumentsException : public SmashExceptions::Exception{
+public:
+    InvalidArgumentsException(const string& sender) : SmashExceptions::Exception(sender, "invalid arguments"){}
+};
+class SmashExceptions::SyscallException : public Exception{
+    const string& _syscall;
+public:
+    SyscallException(const string& _syscall) :
+        _syscall(_syscall),
+        Exception(_syscall,_syscall+" failed"){
+        DEBUG_PRINT("kill command exception thrown");
+    };
+    const char* what() override{
+        return ("smash error: "+_syscall+" failed").c_str();
+    };
+};
+class SmashExceptions::TooManyArgumentsException : public Exception{
+public:
+    TooManyArgumentsException(const string& sender) : Exception(sender, "too many arguments"){};
+};
+class SmashExceptions::TooFewArgumentsException : public Exception{
+public:
+    TooFewArgumentsException(const string& sender) : Exception(sender, "too few arguments"){};
+};
+#undef DEBUG_PRINT
 #endif //SMASH_COMMAND_H_

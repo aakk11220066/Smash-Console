@@ -15,15 +15,16 @@ class ProcessControlBlock {
 private:
     //process data
     job_id_t jobId;
-public:
-    void setJobId(job_id_t jobId);
-
-private:
     pid_t processId;
     bool running = true;
     const std::string creatingCommand;
     time_t startTime;
+
 public:
+    void setJobId(job_id_t jobId);
+    //ROI - field for timed process
+    int duration;
+
     time_t getStartTime() const;
 
     pid_t getProcessId() const;
@@ -38,50 +39,26 @@ public:
 
     bool operator>=(const ProcessControlBlock &rhs) const;
 
-public:
     bool operator==(const ProcessControlBlock &rhs) const;
 
     bool operator!=(const ProcessControlBlock &rhs) const;
 
-public:
     void setRunning(bool running);
 
-    void setYoungestSon(ProcessControlBlock &youngestSon);
-
-    void setYoungerBrother(ProcessControlBlock &youngerBrother);
-
-    void setOlderBrother(ProcessControlBlock &olderBrother);
-
-public:
-    ProcessControlBlock* getYoungestSon() const;
-
-    ProcessControlBlock* getYoungerBrother() const;
-
-    ProcessControlBlock* getOlderBrother() const;
-
-    ProcessControlBlock* getFather() const;
-
-public:
     const job_id_t getJobId() const;
 
     bool isRunning() const;
 
     const std::string &getCreatingCommand() const;
 
-private:
-
-    //family
-    ProcessControlBlock* youngestSon = nullptr;
-    ProcessControlBlock* youngerBrother = nullptr;
-    ProcessControlBlock* olderBrother = nullptr;
-    ProcessControlBlock* father = nullptr;
-
-public:
     ProcessControlBlock(const job_id_t jobId,
                         const pid_t processId,
-                        const std::string &creatingCommand);
+                        const std::string &creatingCommand, const int duration = -1);
+
+    virtual ~ProcessControlBlock();
 };
 
 std::ostream& operator<<(std::ostream& outstream, ProcessControlBlock& pcb);
+
 
 #endif //OS_HW1_PROCESSCONTROLBLOCK_H
