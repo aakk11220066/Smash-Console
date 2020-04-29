@@ -376,14 +376,13 @@ public:
     InvalidArgumentsException(const string& sender) : SmashExceptions::Exception(sender, "invalid arguments"){}
 };
 class SmashExceptions::SyscallException : public Exception{
-    const string& _syscall;
+    string syscallErrMsg;
 public:
     SyscallException(const string& _syscall) :
-        Exception(_syscall,_syscall+" failed"), _syscall(_syscall){
+        Exception(_syscall,_syscall+" failed"), syscallErrMsg("smash error: "+errMsg){
     };
     const char* what() const noexcept override{
-        const char* result = ("smash error: "+_syscall+" failed").c_str();
-        return result;
+        return syscallErrMsg.c_str();
     };
 };
 class SmashExceptions::TooManyArgumentsException : public Exception{
