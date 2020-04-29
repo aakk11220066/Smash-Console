@@ -78,32 +78,11 @@ namespace SignalHandlers {
             return;
         }
 
-        ProcessControlBlock* lateProcess;
-        //in case of foreground process
-        if ((shell->getIsForgroundTimed()) &&
-        (difftime(time(nullptr), shell->getForegroundProcess()->getStartTime()) == shell->getForegroundProcess()->duration)){
-        lateProcess = const_cast<ProcessControlBlock*>(shell->getForegroundProcess());
-        shell->setIsForgroundTimed(false);
-            //send SIGKILL
-            if (kill(lateProcess->getProcessId(), SIGKILL) < 0) {
-                cerr << "smash error: kill failed" << endl;
-                return;
-            }
-            cout << "smash: " << lateProcess->getCreatingCommand() << " timed out!" << endl;
-            return;
-        }
-
 
         //find command that cause alarm
         else lateProcess = shell->getLateProcess();
 
         //send SIGKILL
-        if (lateProcess) {
-            if (kill(lateProcess->getProcessId(), SIGKILL) < 0) {
-                DEBUG_PRINT("alarm handler kill failed 2");
-                cerr << "smash error: kill failed" << endl;
-                return;
-            }
         if (lateProcess) {
             if (kill(lateProcess->getProcessId(), SIGKILL) < 0) {
                 cerr << "smash error: kill failed" << endl;
@@ -114,8 +93,6 @@ namespace SignalHandlers {
             // general remove from job list
             //shell->jobs.removeJobById(lateProcess->getJobId());
             shell->RemoveLateProcess(lateProcess->getJobId());
-
-
         }
     }
 }

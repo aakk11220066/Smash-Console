@@ -26,6 +26,15 @@ class SmallShell;
 using std::string;
 using std::unique_ptr;
 
+template<class T>
+class Heap : private std::vector<T> {
+public:
+    T& getMax();
+    void insert(T& newElement);
+    void erase (const T& target);
+    bool empty();
+};
+
 class JobsManager {
 public:
     //ROI - list of timed processes
@@ -35,7 +44,7 @@ private:
     std::map<job_id_t, ProcessControlBlock> processes;
 
     //std::list<ProcessControlBlock*> runQueue;
-    std::vector<ProcessControlBlock*> waitingHeap;
+    Heap<ProcessControlBlock*> waitingHeap;
 
     SmallShell& smash;
     job_id_t maxIndex = 0;
@@ -55,6 +64,7 @@ public:
     ProcessControlBlock * getLastJob();
     ProcessControlBlock *getLastStoppedJob();
     void pauseJob(job_id_t jobId);
+    void unpauseJob(job_id_t jobId);
     bool isEmpty();
 };
 
@@ -80,7 +90,6 @@ public:
     void RemoveLateProcess(const pid_t); //ROI
     ProcessControlBlock* getLateProcess(); //ROI
     void RemoveLateProcess(const job_id_t); //ROI
-    ProcessControlBlock* getLateProcess(); //ROI
     const std::string &getLastPwd() const;
     void setLastPwd(const std::string &lastPwd);
     bool sendSignal(signal_t signum, job_id_t jobId);
@@ -148,13 +157,6 @@ public:
     virtual void executeBackgroundable() = 0;
 };
 
-public:
-    BackgroundableCommand(string cmd_line, SmallShell* smash);
-    virtual ~BackgroundableCommand() = default;
-    void execute();
-    virtual void executeBackgroundable() = 0;
-};
-
 class ExternalCommand : public BackgroundableCommand {
 private:
     void runExec();
@@ -175,9 +177,6 @@ protected:
 public:
     PipeCommand(std::string cmd_line, SmallShell* smash);
     PipeCommand(unique_ptr<Command> commandFrom, unique_ptr<Command> commandTo, SmallShell *smash);
-    virtual ~PipeCommand();
-    void executeBackgroundable() override
-    ;
     virtual ~PipeCommand();
     void executeBackgroundable() override;
 };

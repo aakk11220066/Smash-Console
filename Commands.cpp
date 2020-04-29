@@ -33,6 +33,36 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 
 const int NO_SETTINGS = 0;
 
+template<>
+ProcessControlBlock* &Heap<ProcessControlBlock*>::getMax() {
+    if (empty()) throw SmashExceptions::NoStoppedJobsException();
+
+    ProcessControlBlock* result = this->front();
+    for (ProcessControlBlock* elem : *this) if (*elem>*result) result = elem;
+    return result;
+}
+
+template<class T>
+void Heap<T>::insert(T &newElement) {
+    std::vector<T>::push_back(newElement);
+    push_heap(this->begin(), this->end());
+}
+
+template<class T>
+bool Heap<T>::empty() {
+    return std::vector<T>::empty();
+}
+
+template<class T>
+void Heap<T>::erase(const T& target) {
+    std::vector<ProcessControlBlock*>::iterator position =
+            find(this->begin(), this->end(), target);
+    if (position != this->end()) std::vector<T>::erase(position);
+
+    make_heap(this->begin(), this->end());
+}
+
+
 ///strip spaces from beginning
 ///implemented for trim
 string _ltrim(const std::string& s)
@@ -277,7 +307,7 @@ void GetCurrDirCommand::execute() {
     if (currDir != "") cout << currDir << endl;
 }
 
-ChangeDirCommand::ChangeDirCommand(string cmd_line, SmallShell* smash) : BuiltInCommand(cmd_line, smash) {} //FIXME: cd ...* throws bad_alloc
+ChangeDirCommand::ChangeDirCommand(string cmd_line, SmallShell* smash) : BuiltInCommand(cmd_line, smash) {} //FIXME: badly formed argument fails instead of throwing failure result
 
 void ChangeDirCommand::execute() {
     if (args.size() -1 > 1) throw SmashExceptions::TooManyArgumentsException("cd");
@@ -321,14 +351,9 @@ void JobsManager::removeFinishedJobs() {
         }
     }
     for (job_id_t jobId : targets){
-        ProcessControlBlock* targetPCB = &processes.at(jobId);
-        std::vector<ProcessControlBlock*>::iterator position =
-                find(waitingHeap.begin(), waitingHeap.end(), targetPCB);
-        if (position != waitingHeap.end()) waitingHeap.erase(position);
+        waitingHeap.erase(&processes.at(jobId));
         processes.erase(jobId);
     }
-
-    make_heap(waitingHeap.begin(), waitingHeap.end());
 }
 
 void JobsManager::printJobsList() {
@@ -359,15 +384,8 @@ ProcessControlBlock* JobsManager::getLastJob() {
 }
 
 void JobsManager::removeJobById(job_id_t jobId) {
-    //find target job
-    ProcessControlBlock* target = getJobById(jobId);
-    assert(target);
-
     //remove from waiting list
-    std::vector<ProcessControlBlock*>::iterator position =
-            find(waitingHeap.begin(), waitingHeap.end(), target);
-    if (waitingHeap.end() != position) waitingHeap.erase(position);
-    make_heap(waitingHeap.begin(), waitingHeap.end());
+    waitingHeap.erase(&processes.at(jobId));
     //remove from map
     processes.erase(jobId);
 
@@ -384,15 +402,27 @@ void JobsManager::pauseJob(job_id_t jobId) {
     ProcessControlBlock* pcb = getJobById(jobId);
     assert(pcb);
     pcb->setRunning(false);
-    waitingHeap.push_back(pcb);
-    push_heap(waitingHeap.begin(), waitingHeap.end());
+    waitingHeap.insert(pcb);
+}
+
+void JobsManager::unpauseJob(job_id_t jobId) {
+    //send SIGCONT
+    bool signalSendStatus = smash.sendSignal(SIGCONT, jobId);
+    assert(signalSendStatus);
+
+    ProcessControlBlock* pcb = getJobById(jobId);
+    //inform process manager that it is running now
+    pcb->setRunning(true);
+
+    //remove from waiting list
+    waitingHeap.erase(pcb);
 }
 
 JobsManager::JobsManager(SmallShell &smash) : smash(smash) {}
 
 ProcessControlBlock *JobsManager::getLastStoppedJob() {
     if (waitingHeap.empty()) throw SmashExceptions::NoStoppedJobsException();
-    ProcessControlBlock* result = waitingHeap.front();
+    ProcessControlBlock* result = waitingHeap.getMax();
     assert(result);
     return result;
 }
@@ -503,6 +533,7 @@ void ForegroundCommand::execute() {
 }
 
 //TODO: make bg return "there is no stopped jobs to resume" when all of background is running and no arguments given (management of waitingHeap faulty) - lines that add/remove from the heap are 325, 367, 377
+//FIXME: background fails on no arguments
 BackgroundCommand::BackgroundCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cmd_line, smash) {
     //sanitize inputs
     //set jobId = args[0] or lastStoppedCommand if none specified
@@ -527,11 +558,7 @@ BackgroundCommand::BackgroundCommand(string cmd_line, SmallShell *smash) : Built
 }
 
 void BackgroundCommand::execute() {
-    //send SIGCONT
-    bool signalSendStatus = smash->sendSignal(SIGCONT, jobId);
-    assert(signalSendStatus);
-
-    pcb->setRunning(true);
+    smash->jobs.unpauseJob(jobId);
 }
 
 QuitCommand::QuitCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cmd_line, smash) {
@@ -737,12 +764,6 @@ CopyCommand::CopyCommand(string cmd_line, SmallShell *smash) try :
 
 void CopyCommand::execute() {
     RedirectionCommand::execute();
-}
-
-SmallShell *CopyCommand::init(SmallShell *smash) {
-    //TODO: figure out how to run init after Command ctor but before sending possibly erroneous arguments to RedirectionCommand ctor (unless certain it doesn't matter).  Possibly just catch IndexOutOfBounds-like exception from bad access to args vector (would need to switch to .at instead of operator[])
-    if (args.size() -1 != 2) INVALIDATE("smash error: cp: invalid arguments");
-    return smash;
 }
 
 CopyCommand::ReadCommand::ReadCommand(string fileName, SmallShell *smash) :
