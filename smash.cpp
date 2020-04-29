@@ -60,7 +60,7 @@ namespace SignalHandlers {
     }
 
     void alarmHandler(int sig_num) {
-        // do we need to print we got an alarm anyway?
+        // do we need to print we got an alarm anyway? - we do
         cout << "smash: got an alarm" << endl;
         ProcessControlBlock* lateProcess;
         //in case of foreground process
