@@ -73,6 +73,7 @@ private:
     SmallShell();
 
     bool isForgroundTimed = false;
+    bool hasProcessTimedOut = false;
     std::string smashPrompt = "smash> ";
 
     std::string lastPwd = "";
@@ -95,6 +96,8 @@ public:
     bool sendSignal(signal_t signum, job_id_t jobId);
     bool getIsForgroundTimed() const; //ROI
     void setIsForgroundTimed(bool value); //ROI
+    bool getHasProcessTimedOut() const; //ROI
+    void setHasProcessTimedOut(bool value); //ROI
 
     JobsManager jobs;
 
