@@ -66,6 +66,7 @@ private:
     std::string smashPrompt = "smash> ";
 
     std::string lastPwd = "";
+
     const ProcessControlBlock* foregroundProcess = nullptr;
 public:
     const ProcessControlBlock *getForegroundProcess() const;
@@ -77,6 +78,8 @@ public:
     pid_t smashPid;
 public:
     void RemoveLateProcess(const pid_t); //ROI
+    ProcessControlBlock* getLateProcess(); //ROI
+    void RemoveLateProcess(const job_id_t); //ROI
     ProcessControlBlock* getLateProcess(); //ROI
     const std::string &getLastPwd() const;
     void setLastPwd(const std::string &lastPwd);
@@ -145,6 +148,13 @@ public:
     virtual void executeBackgroundable() = 0;
 };
 
+public:
+    BackgroundableCommand(string cmd_line, SmallShell* smash);
+    virtual ~BackgroundableCommand() = default;
+    void execute();
+    virtual void executeBackgroundable() = 0;
+};
+
 class ExternalCommand : public BackgroundableCommand {
 private:
     void runExec();
@@ -168,6 +178,8 @@ public:
     virtual ~PipeCommand();
     void executeBackgroundable() override
     ;
+    virtual ~PipeCommand();
+    void executeBackgroundable() override;
 };
 
 class RedirectionCommand : public PipeCommand {

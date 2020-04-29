@@ -21,14 +21,13 @@ namespace SignalHandlers {
 
             //stop process
             if (kill(foregroundProcess->getProcessId(), SIGSTOP) < 0) {
-                DEBUG_PRINT("ctrlz handler kill failed");
                 cerr << "smash error: kill failed" << endl;
                 return;
             }
             cout << "smash: process " << foregroundProcess->getProcessId() << " was stopped" << endl;
 
             //log that process is stopped
-            const_cast<ProcessControlBlock *>(foregroundProcess)->setRunning(false);
+            const_cast<ProcessControlBlock*>(foregroundProcess)->setRunning(false);
 
             //add foreground command to jobs
             shell->jobs.addJob(*foregroundProcess);
@@ -46,7 +45,6 @@ namespace SignalHandlers {
         }
     }
 
-
     void ctrlCHandler(int sig_num) {
         cout << "smash: got ctrl-C" << endl;
 
@@ -54,7 +52,6 @@ namespace SignalHandlers {
         const ProcessControlBlock *foregroundProcess = shell->getForegroundProcess();
         if (foregroundProcess) {
             if (kill(foregroundProcess->getProcessId(), SIGKILL) < 0) {
-                DEBUG_PRINT("ctrlc handler kill failed");
                 cerr << "smash error: kill failed" << endl;
                 return;
             }
@@ -81,6 +78,21 @@ namespace SignalHandlers {
             return;
         }
 
+        ProcessControlBlock* lateProcess;
+        //in case of foreground process
+        if ((shell->getIsForgroundTimed()) &&
+        (difftime(time(nullptr), shell->getForegroundProcess()->getStartTime()) == shell->getForegroundProcess()->duration)){
+        lateProcess = const_cast<ProcessControlBlock*>(shell->getForegroundProcess());
+        shell->setIsForgroundTimed(false);
+            //send SIGKILL
+            if (kill(lateProcess->getProcessId(), SIGKILL) < 0) {
+                cerr << "smash error: kill failed" << endl;
+                return;
+            }
+            cout << "smash: " << lateProcess->getCreatingCommand() << " timed out!" << endl;
+            return;
+        }
+
 
         //find command that cause alarm
         else lateProcess = shell->getLateProcess();
@@ -92,12 +104,20 @@ namespace SignalHandlers {
                 cerr << "smash error: kill failed" << endl;
                 return;
             }
+        if (lateProcess) {
+            if (kill(lateProcess->getProcessId(), SIGKILL) < 0) {
+                cerr << "smash error: kill failed" << endl;
+                return;
+            }
 
             cout << "smash: " << lateProcess->getCreatingCommand() << " timed out!" << endl;
-            shell->RemoveLateProcess(lateProcess->getProcessId());
+            // general remove from job list
+            //shell->jobs.removeJobById(lateProcess->getJobId());
+            shell->RemoveLateProcess(lateProcess->getJobId());
+
+
         }
     }
-
 }
 
     int main(int argc, char *argv[]) {
@@ -121,15 +141,14 @@ namespace SignalHandlers {
             perror("smash error: failed to set alarm signal handler");
         }
 
-
-        SmallShell &smash = SmallShell::getInstance();
-        shell = &smash;
-        while (true) {
-            std::cout << smash.getSmashPrompt();
-            std::string cmd_line;
-            std::getline(std::cin, cmd_line);
-            smash.jobs.removeFinishedJobs();
-            smash.executeCommand(cmd_line);
-        }
-        return 0;
+    SmallShell& smash = SmallShell::getInstance();
+    shell = &smash;
+    while(true) {
+        std::cout << smash.getSmashPrompt();
+        std::string cmd_line;
+        std::getline(std::cin, cmd_line);
+        smash.jobs.removeFinishedJobs();
+        smash.executeCommand(cmd_line);
     }
+    return 0;
+}

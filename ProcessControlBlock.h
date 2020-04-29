@@ -27,8 +27,6 @@ public:
 
     time_t getStartTime() const;
 
-    void resetStartTime();
-
     pid_t getProcessId() const;
 
     void setProcessId(pid_t processId);

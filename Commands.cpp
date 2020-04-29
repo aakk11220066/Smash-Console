@@ -1,7 +1,6 @@
 #include <unistd.h>
 #include <string.h>
 #include <iostream>
-#include <string.h>
 #include <vector>
 #include <sstream>
 #include <memory>
@@ -132,9 +131,8 @@ std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
 ProcessControlBlock* SmallShell::getLateProcess() //ROI
 {
     for (ProcessControlBlock *pcb: jobs.timed_processes){
+
         if (difftime(time(nullptr), pcb->getStartTime()) == pcb->duration){
-            //erase timed process from job list
-            jobs.removeJobById(pcb->getJobId());
             return pcb;
         }
 
@@ -142,16 +140,20 @@ ProcessControlBlock* SmallShell::getLateProcess() //ROI
     return nullptr;
 }
 
-void SmallShell::RemoveLateProcess(pid_t pid){
-    ProcessControlBlock* target = jobs.getJobById(pid);
-    assert(target);
-// erase from timed_processes list
-    std::list<ProcessControlBlock*>::iterator position =
-            find(jobs.timed_processes.begin(), jobs.timed_processes.end(), target);
-    if (jobs.timed_processes.end() != position) jobs.timed_processes.erase(position);
-// erase from map
-    jobs.removeJobById(pid);
+void SmallShell::RemoveLateProcess(job_id_t jobId){
+    // erase from map
+    jobs.removeJobById(jobId);
+    //remove from list
+    for (ProcessControlBlock *pcb: jobs.timed_processes){
+        //cout << pid << endl << pcb->getProcessId() << endl;
+        if (pcb->getJobId() == jobId) {
+            jobs.timed_processes.remove(pcb);
+            return;
+
+        }
+    }
 }
+
 
 void SmallShell::executeCommand(string cmd_line) {
     try {
@@ -368,6 +370,14 @@ void JobsManager::removeJobById(job_id_t jobId) {
     make_heap(waitingHeap.begin(), waitingHeap.end());
     //remove from map
     processes.erase(jobId);
+
+    /*
+    // remove from timed_processes list
+    for (ProcessControlBlock* pcb : smash.jobs.timed_processes){
+        if (pcb->getJobId() == jobId) timed_processes.remove(pcb);
+    }
+     */
+
 }
 
 void JobsManager::pauseJob(job_id_t jobId) {
@@ -394,6 +404,8 @@ void JobsManager::killAllJobs() {
         bool signalStatus = smash.sendSignal(SIGKILL, pcbPair.first);
         assert (signalStatus>=0);
     }
+    // ROI erase also all timed processes
+    smash.jobs.timed_processes.clear();
 }
 
 void JobsManager::addJob(const Command &cmd, pid_t pid, int duration) {
@@ -677,7 +689,6 @@ void RedirectionCommand::execute() {
 
 SmallShell *RedirectionCommand::sanitizeInputs(SmallShell *smash) {
     operatorPosition = cmd_line.find_first_of('>');
-    DEBUG_PRINT("operatorPosition="<<operatorPosition);
     //ensure a string representing a filename was specified (validation that it is a filename in redirected ctor)
     if (cmd_line.size() > operatorPosition+1) {
         DEBUG_PRINT("cmd_line.size() > operatorPosition+1 was not fulfilled because cmd_line.size()="<<cmd_line.size()<<" and operatorPosition+1="<<operatorPosition+1);
@@ -726,6 +737,12 @@ CopyCommand::CopyCommand(string cmd_line, SmallShell *smash) try :
 
 void CopyCommand::execute() {
     RedirectionCommand::execute();
+}
+
+SmallShell *CopyCommand::init(SmallShell *smash) {
+    //TODO: figure out how to run init after Command ctor but before sending possibly erroneous arguments to RedirectionCommand ctor (unless certain it doesn't matter).  Possibly just catch IndexOutOfBounds-like exception from bad access to args vector (would need to switch to .at instead of operator[])
+    if (args.size() -1 != 2) INVALIDATE("smash error: cp: invalid arguments");
+    return smash;
 }
 
 CopyCommand::ReadCommand::ReadCommand(string fileName, SmallShell *smash) :

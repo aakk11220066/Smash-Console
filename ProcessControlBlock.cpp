@@ -74,10 +74,21 @@ void ProcessControlBlock::setProcessId(pid_t processId) {
 time_t ProcessControlBlock::getStartTime() const {
     return startTime;
 }
+//ROI
+void ProcessControlBlock::setStartTime(time_t new_time){
+    startTime = new_time;
+}
 
 void ProcessControlBlock::setJobId(job_id_t jobId) {
     ProcessControlBlock::jobId = jobId;
 }
+/*
+//ROI
+void ProcessControlBlock::setCreatingCommand(std::string command) {
+    ProcessControlBlock::creatingCommand = command;
+
+}
+ */
 
 std::ostream& operator<<(std::ostream &outstream, ProcessControlBlock &pcb);
 ProcessControlBlock::~ProcessControlBlock() {
