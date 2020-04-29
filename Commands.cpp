@@ -31,10 +31,8 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 #define DIGITS "1234567890"
 
 
-const int NO_SETTINGS = 0;
-
 template<>
-ProcessControlBlock *&Heap<ProcessControlBlock *>::getMax() {
+ProcessControlBlock* Heap<ProcessControlBlock*>::getMax() {
     if (empty()) throw SmashExceptions::NoStoppedJobsException();
 
     ProcessControlBlock *result = this->front();
@@ -123,7 +121,8 @@ string _removeBackgroundSign(string cmd_line) {
 }
 
 
-SmallShell::SmallShell() : jobs(*this), smashPid(getpid()) {}
+
+SmallShell::SmallShell() : smashPid(getpid()), jobs(*this) {}
 
 /**
 * Creates and returns a pointer to Command class which matches the given command line (cmd_line)
@@ -353,7 +352,7 @@ void JobsCommand::execute() {
 void JobsManager::removeFinishedJobs() {
     std::list<job_id_t> targets;
     for (pair<job_id_t, ProcessControlBlock> job : processes) {
-        int waitPidStatus = waitpid(job.second.getProcessId(), nullptr, WNOHANG);
+        if (waitpid(job.second.getProcessId(), nullptr, WNOHANG)<0) throw SmashExceptions::SyscallException("waitpid");
         int killStatus = kill(job.second.getProcessId(), 0);
         if (killStatus < 0 && errno == 3) {
             targets.push_back(job.first);
@@ -471,7 +470,6 @@ void JobsManager::addJob(const ProcessControlBlock &pcb) {
 }
 
 job_id_t JobsManager::resetMaxIndex() {
-    DEBUG_PRINT("resetMaxIndex called, currently maxIndex=" << maxIndex);
     while (maxIndex > 0 && !getJobById(maxIndex)) {
         --maxIndex;
     }
@@ -533,11 +531,11 @@ void ForegroundCommand::execute() {
     pid_t pid = pcb->getProcessId();
 
     smash->setForegroundProcess(pcb);
-    const int waitStatus = waitpid(pid, nullptr, NO_SETTINGS);
+    smash->jobs.removeJobById(jobId);
+    const int waitStatus = waitpid(pid, nullptr, WUNTRACED);
     if (waitStatus < 0) throw SmashExceptions::SyscallException("waitpid");
     smash->setForegroundProcess(nullptr);
 
-    smash->jobs.removeJobById(jobId);
     // ROI - loop to remove timed process in case it ended before the timeout
     for (auto it = smash->jobs.timed_processes.begin(); it != smash->jobs.timed_processes.end(); ++it) {
         if (!*it) continue; //AKIVA - to prevent segmentation faults
@@ -595,7 +593,7 @@ void BackgroundableCommand::execute() {
     pid = fork();
     if (pid < 0) throw SmashExceptions::SyscallException("fork");
     if (pid == 0) {
-        DEBUG_PRINT("Forked a son for backgroundablecommand " << cmd_line << " with pid=" << getpid());
+        DEBUG_PRINT("process "<<getppid()<<" forked a son for backgroundablecommand "<<cmd_line<<" with pid="<<getpid());
         if (setpgrp() < 0) throw SmashExceptions::SyscallException("setpgrp");
 
         executeBackgroundable();
@@ -608,8 +606,7 @@ void BackgroundableCommand::execute() {
             smash->setForegroundProcess(&foregroundPcb);
             const int waitStatus = waitpid(pid, nullptr, WUNTRACED);
             if (waitStatus < 0) {
-                DEBUG_PRINT("backgroundablecommand waitpid failed with pid=" << pid << ", waitStatus=" << waitStatus
-                                                                             << ", and errno=" << errno);
+                DEBUG_PRINT("backgroundablecommand waitpid failed with pid="<<pid<<", waitStatus="<<waitStatus<<", and errno="<<errno<<" which is "<<strerror(errno));
                 throw SmashExceptions::SyscallException("waitpid");
             }
             smash->setForegroundProcess(nullptr);
@@ -723,27 +720,12 @@ RedirectionCommand::RedirectionCommand(std::string cmd_line, SmallShell *smash) 
                            _trim(cmd_line.substr(OPERATOR_POSITION + 1
                                                  + indicator(cmd_line.at(1 + OPERATOR_POSITION) == '>'))),
                            cmd_line.at(1 + OPERATOR_POSITION) == '>',
-                           sanitizeInputs(smash)) {}
-
+                            smash) {}
 #undef OPERATOR_POSITION
 
 
 void RedirectionCommand::execute() {
     PipeCommand::execute();
-}
-
-SmallShell *RedirectionCommand::sanitizeInputs(SmallShell *smash) {
-    operatorPosition = cmd_line.find_first_of('>');
-    //ensure a string representing a filename was specified (validation that it is a filename in redirected ctor)
-    if (cmd_line.size() > operatorPosition + 1) {
-        DEBUG_PRINT("cmd_line.size() > operatorPosition+1 was not fulfilled because cmd_line.size()=" << cmd_line.size()
-                                                                                                      << " and operatorPosition+1="
-                                                                                                      <<
-                                                                                                      operatorPosition +
-                                                                                                      1);
-        throw SmashExceptions::InvalidArgumentsException("redirection");
-    }
-    return smash;
 }
 
 RedirectionCommand::WriteCommand::WriteCommand(string fileName, bool append, SmallShell *smash) :
