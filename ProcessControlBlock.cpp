@@ -27,37 +27,6 @@ const std::string &ProcessControlBlock::getCreatingCommand() const {
     return creatingCommand;
 }
 
-ProcessControlBlock* ProcessControlBlock::getYoungestSon() const {
-    return youngestSon;
-}
-
-ProcessControlBlock* ProcessControlBlock::getYoungerBrother() const {
-    return youngerBrother;
-}
-
-ProcessControlBlock* ProcessControlBlock::getOlderBrother() const {
-    return olderBrother;
-}
-
-ProcessControlBlock* ProcessControlBlock::getFather() const {
-    return father;
-}
-
-void ProcessControlBlock::setRunning(bool running) {
-    ProcessControlBlock::running = running;
-}
-
-void ProcessControlBlock::setYoungestSon(ProcessControlBlock& youngestSon) {
-    ProcessControlBlock::youngestSon = &youngestSon;
-}
-
-void ProcessControlBlock::setYoungerBrother(ProcessControlBlock &youngerBrother) {
-    ProcessControlBlock::youngerBrother = &youngerBrother;
-}
-
-void ProcessControlBlock::setOlderBrother(ProcessControlBlock &olderBrother) {
-    ProcessControlBlock::olderBrother = &olderBrother;
-}
 
 bool ProcessControlBlock::operator==(const ProcessControlBlock &rhs) const {
     return jobId == rhs.jobId;
