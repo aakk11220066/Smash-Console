@@ -129,6 +129,7 @@ public:
     bool verbose = true;
     bool invalid = false;
     std::string cmd_line;
+    bool isBuiltIn = false;
 
 public:
     Command(std::string cmd_line, SmallShell* smash);
@@ -319,6 +320,8 @@ public:
 
 class TimeoutCommand : public Command {
     string inner_cmd_line;
+    unique_ptr<Command> innerCommand = nullptr;
+
 private:
     bool backgroundRequest = false;
     int waitNumber;
