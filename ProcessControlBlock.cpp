@@ -15,11 +15,12 @@ ProcessControlBlock::ProcessControlBlock(const job_id_t jobId,
                                          const int duration) :
 
                                          jobId(jobId),
+                                         processId(processId),
                                          creatingCommand(creatingCommand),
                                          startTime(time(nullptr)),
-                                         processId(processId),
                                          //ROI field for timed processes
-                                         duration(duration){
+                                         duration(duration)
+                                         {
 
 }
 
