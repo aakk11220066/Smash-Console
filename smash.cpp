@@ -20,10 +20,12 @@ namespace SignalHandlers {
         if (foregroundProcess) {
 
             //stop process
-            if (kill(foregroundProcess->getProcessId(), SIGSTOP) < 0) {
-                cerr << "smash error: kill failed" << endl;
-                return;
+            try{
+                ::sendSignal(*foregroundProcess, SIGSTOP);
+            } catch (SmashExceptions::SyscallException& error){
+                cerr << error.what() << endl;
             }
+
             cout << "smash: process " << foregroundProcess->getProcessId() << " was stopped" << endl;
 
             //log that process is stopped
@@ -31,17 +33,6 @@ namespace SignalHandlers {
 
             //add foreground command to jobs
             shell->jobs.addJob(*foregroundProcess);
-
-            /*
-            //DEBUG
-            if (foregroundProcess) {
-                if (kill(foregroundProcess->getProcessId(), SIGKILL) < 0) {
-                    cerr << "smash error: kill failed" << endl;
-                    return;
-                }
-                cout << "smash: process " << foregroundProcess->getProcessId() << " was stopped" << endl;
-            }*/
-            //DEBUG
         }
     }
 
@@ -51,9 +42,10 @@ namespace SignalHandlers {
         //send SIGKILL to foreground process
         const ProcessControlBlock *foregroundProcess = shell->getForegroundProcess();
         if (foregroundProcess) {
-            if (kill(foregroundProcess->getProcessId(), SIGKILL) < 0) {
-                cerr << "smash error: kill failed" << endl;
-                return;
+            try{
+                ::sendSignal(*foregroundProcess, SIGKILL);
+            } catch (SmashExceptions::SyscallException& error){
+                cerr << error.what() << endl;
             }
             cout << "smash: process " << foregroundProcess->getProcessId() << " was killed" << endl;
         }
@@ -64,15 +56,16 @@ namespace SignalHandlers {
         cout << "smash: got an alarm" << endl;
         ProcessControlBlock* lateProcess;
         //in case of foreground process
-        if ((shell->getIsForgroundTimed()) &&
-        (difftime(time(nullptr), shell->getForegroundProcess()->getStartTime()) == shell->getForegroundProcess()->duration)){
-        lateProcess = const_cast<ProcessControlBlock*>(shell->getForegroundProcess());
-        shell->setIsForgroundTimed(false);
+        if ((lateProcess = const_cast<ProcessControlBlock*>(shell->getForegroundProcess())) && //AKIVA - in case of no foreground process, avoid nullptr dereferencing
+            (shell->getIsForgroundTimed()) &&
+            (difftime(time(nullptr), shell->getForegroundProcess()->getStartTime()) == shell->getForegroundProcess()->duration)){
+
+            shell->setIsForgroundTimed(false);
             //send SIGKILL
-            if (kill(lateProcess->getProcessId(), SIGKILL) < 0) {
-                DEBUG_PRINT("alarmhandler kill failed 1");
-                cerr << "smash error: kill failed" << endl;
-                return;
+            try{
+                ::sendSignal(*lateProcess, SIGKILL);
+            } catch (SmashExceptions::SyscallException& error){
+                cerr << error.what() << endl;
             }
             cout << "smash: " << lateProcess->getCreatingCommand() << " timed out!" << endl;
             return;
@@ -84,7 +77,13 @@ namespace SignalHandlers {
 
         //send SIGKILL
         if (lateProcess) {
-            if ((kill(lateProcess->getProcessId(), SIGKILL) < 0) && (shell->getHasProcessTimedOut())) {
+            bool killSuccess = true;
+            try{
+                ::sendSignal(*lateProcess, SIGSTOP);
+            } catch (SmashExceptions::SyscallException& error){
+                killSuccess = false;
+            }
+            if (killSuccess && (shell->getHasProcessTimedOut())) {
                 cerr << "smash error: kill failed" << endl;
                 shell->setHasProcessTimedOut(false);
                 return;

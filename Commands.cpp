@@ -602,20 +602,18 @@ void QuitCommand::execute() {
     exit(0);
 }
 
-BackgroundableCommand::BackgroundableCommand(string cmd_line, SmallShell *smash) : Command(cmd_line, smash),
-                                                                                   backgroundRequest(
-                                                                                           _isBackgroundComamnd(
-                                                                                                   cmd_line)) {}
+BackgroundableCommand::BackgroundableCommand(string cmd_line, SmallShell *smash) :
+    Command(cmd_line, smash), backgroundRequest(_isBackgroundComamnd(cmd_line)) {}
 
 void BackgroundableCommand::execute() {
     //fork a son
     pid = fork();
     if (pid < 0) throw SmashExceptions::SyscallException("fork");
     if (pid == 0) {
-        DEBUG_PRINT("process "<<getppid()<<" forked a son for backgroundablecommand "<<cmd_line<<" with pid="<<getpid());
+        //DEBUG_PRINT("process "<<getppid()<<" forked a son for backgroundablecommand "<<cmd_line<<" with pid="<<getpid());
         smash->escapeSmashProcessGroup();
 
-        executeBackgroundable();
+        if (!isRedirectionBuiltinForegroundCommand) executeBackgroundable();
         exit(0);
     } else {
         //if !backgroundRequest then wait for son, inform smash that a foreground program is running
@@ -628,8 +626,9 @@ void BackgroundableCommand::execute() {
                 throw SmashExceptions::SyscallException("waitpid");
             }
             smash->setForegroundProcess(nullptr);
+            if (isRedirectionBuiltinForegroundCommand) executeBackgroundable(); //run from smash process
         }
-            //else add to jobs
+        //else add to jobs
         else {
             smash->jobs.addJob(*this, pid);
             // ROI - unknkown change
@@ -674,59 +673,66 @@ PipeCommand::PipeCommand(std::unique_ptr<Command> commandFrom, std::unique_ptr<C
     if (pipe(pipeSides)<0) throw SmashExceptions::SyscallException("pipe");
 }
 
-void PipeCommand::commandFromBuiltinExecution() {
-    if (!pidFrom){
-        exit(0);
-    }
-    else {
-        typedef int fd_number_t;
-        fd_number_t outputAddress = errPipe ? STDERR_FILENO : STDOUT_FILENO;
-
-        //duplicate stdout/stderr
-        fd_number_t stdoutCopy = dup(outputAddress);
-
-        //replace stdout/err with pipe write side
-        if (dup2(pipeSides[1], outputAddress) < 0)
-            throw SmashExceptions::SyscallException("dup2");
-        //execute commandFrom
-        commandFrom->execute();
-
-        //restore stdout/err
-        if (dup2(stdoutCopy, outputAddress)<0) throw SmashExceptions::SyscallException("dup2");
-        //close duplicate
-        if (close(stdoutCopy)<0) throw SmashExceptions::SyscallException("close");
-    }
-}
-
 void PipeCommand::commandFromNonBuiltinExecution() {
-    if (!pidFrom){
+    //run commandFrom fork
+    if ((pidFrom = fork()) < 0) throw SmashExceptions::SyscallException("fork");
+    if (!pidFrom) {
         *processGroupFromPtr = smash->escapeSmashProcessGroup();
-        DEBUG_PRINT("process " << getppid() << " forked a son for pipe commandFrom " << commandFrom->cmd_line
-                               << " with pid=" << getpid());
+        if (signal(SIGCONT, SIG_DFL) == SIG_ERR) throw SmashExceptions::SyscallException("signal");
+        DEBUG_PRINT("process "<<getppid()<<" forked a son for pipe commandFrom "<<commandFrom->cmd_line<<" with pid="<<getpid());
         //close pipe read side
-        if (close(pipeSides[0]) < 0) throw SmashExceptions::SyscallException("close");
+        if (close(pipeSides[0])) throw SmashExceptions::SyscallException("close");
         //replace stdout with pipe write side
         if (dup2(pipeSides[1], errPipe ? STDERR_FILENO : STDOUT_FILENO) < 0)
             throw SmashExceptions::SyscallException("dup2");
-        //execute commandFrom
+        //execute commandFrom //TODO: test if command is showpid, needs to print original smash pid
         commandFrom->execute();
+        exit(0);
+    }
+}
+
+void PipeCommand::commandFromBuiltinExecution() {
+    typedef int fd_number_t;
+    fd_number_t outputAddress = errPipe ? STDERR_FILENO : STDOUT_FILENO;
+
+    //duplicate stdout/stderr
+    fd_number_t stdoutCopy = dup(outputAddress);
+
+    //replace stdout/err with pipe write side
+    if (dup2(pipeSides[1], outputAddress) < 0)
+        throw SmashExceptions::SyscallException("dup2");
+    //execute commandFrom
+    commandFrom->execute();
+
+    //restore stdout/err
+    if (dup2(stdoutCopy, outputAddress)<0) throw SmashExceptions::SyscallException("dup2");
+    //close duplicate
+    if (close(stdoutCopy)<0) throw SmashExceptions::SyscallException("close");
+
+    //run commandFrom fork (pointless, for structure)
+    if ((pidFrom = fork()) < 0) throw SmashExceptions::SyscallException("fork");
+    if (!pidFrom){
+        DEBUG_PRINT("CommandFrom pointlessly started, exiting");
+        //close pipe read side
+        if (close(pipeSides[0])) throw SmashExceptions::SyscallException("close");
         exit(0);
     }
 }
 
 void PipeCommand::commandFromExecution() {
-    if ((pidFrom = fork()) < 0) throw SmashExceptions::SyscallException("fork");
-    if (!(commandFrom->isBuiltIn)) commandFromNonBuiltinExecution();
+    if (!(commandFrom->isBuiltIn) || !isRedirectionCommand) commandFromNonBuiltinExecution();
     else commandFromBuiltinExecution();
 }
 
 void PipeCommand::commandToExecution() {
+    //run commandTo fork
     if ((pidTo = fork()) < 0) throw SmashExceptions::SyscallException("fork");
     if (!pidTo) {
         *processGroupToPtr = smash->escapeSmashProcessGroup();
+        if (signal(SIGCONT, SIG_DFL) == SIG_ERR) throw SmashExceptions::SyscallException("signal");
         DEBUG_PRINT("process "<<getppid()<<" forked a son for pipe commandTo "<<commandTo->cmd_line<<" with pid="<<getpid());
         //close pipe write side
-        if (close(pipeSides[1]) < 0) throw SmashExceptions::SyscallException("close");
+        if (close(pipeSides[1])) throw SmashExceptions::SyscallException("close");
         //replace stdin with pipe read side
         if (dup2(pipeSides[0], STDIN_FILENO) < 0) throw SmashExceptions::SyscallException("dup2");
         //execute commandTo
@@ -734,11 +740,16 @@ void PipeCommand::commandToExecution() {
         exit(0);
     }
 }
+
 void PipeCommand::executeBackgroundable() {
-    commandFromExecution();
-    if (pidFrom) { //parent process
+    //create pipe
+    if (pipe(pipeSides)) throw SmashExceptions::SyscallException("pipe");
+
+    PipeCommand::commandFromExecution();
+    if (pidFrom) {
         commandToExecution();
-        if (pidTo) {//parent process
+        if (pidTo){
+            //parent
             if (close(pipeSides[0]) || close(pipeSides[1])) throw SmashExceptions::SyscallException("close");
 
             wait(nullptr);
@@ -747,6 +758,7 @@ void PipeCommand::executeBackgroundable() {
         }
     }
 }
+
 
 PipeCommand::~PipeCommand() {
     if (pidFrom != -1) {
@@ -769,7 +781,10 @@ unsigned short indicator(bool condition) {
 
 RedirectionCommand::RedirectionCommand(unique_ptr<Command> commandFrom, string filename, bool append,
                                        SmallShell *smash) :
-        PipeCommand(std::move(commandFrom), unique_ptr<Command>(new WriteCommand(filename, append, smash)), smash) {}
+        PipeCommand(std::move(commandFrom), unique_ptr<Command>(new WriteCommand(filename, append, smash)), smash) {
+
+    isRedirectionCommand = true;
+}
 
 
 #define OPERATOR_POSITION (cmd_line.find_first_of('>'))
@@ -783,6 +798,7 @@ RedirectionCommand::RedirectionCommand(std::string cmd_line, SmallShell *smash) 
 
 
 void RedirectionCommand::execute() {
+    isRedirectionBuiltinForegroundCommand = commandFrom->isBuiltIn && !BackgroundableCommand::backgroundRequest;
     PipeCommand::execute();
 }
 
@@ -944,6 +960,7 @@ void TimeoutCommand::execute() {
 ExternalCommand::ExternalCommand(string cmd_line, SmallShell *smash) : BackgroundableCommand(cmd_line, smash) {}
 
 void ExternalCommand::executeBackgroundable() {
+    DEBUG_PRINT("executing externalcommand "<<cmd_line);
     execl("/bin/bash", "/bin/bash", "-c", _removeBackgroundSign(cmd_line).c_str(), NULL);
 }
 

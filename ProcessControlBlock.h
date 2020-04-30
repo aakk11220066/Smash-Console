@@ -16,6 +16,7 @@ private:
     //process data
     job_id_t jobId;
     pid_t processId;
+    pid_t processGroupId;
     bool running = true;
     const std::string creatingCommand;
     time_t startTime;
@@ -59,7 +60,7 @@ public:
                         const pid_t processId,
                         const std::string &creatingCommand, const int duration = -1);
 
-    virtual ~ProcessControlBlock();
+    pid_t getProcessGroupId() const;
 };
 
 std::ostream& operator<<(std::ostream& outstream, ProcessControlBlock& pcb);

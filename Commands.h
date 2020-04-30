@@ -159,10 +159,11 @@ public:
 
 class BackgroundableCommand : public Command {
 private:
-    pid_t pid;
+    pid_t pid=0;
 
 protected:
     bool backgroundRequest = false;
+    bool isRedirectionBuiltinForegroundCommand = false;
 public:
     BackgroundableCommand(string cmd_line, SmallShell* smash);
     virtual ~BackgroundableCommand() = default;
@@ -186,7 +187,7 @@ private:
     pid_t processGroupFrom = getpgrp();
     pid_t processGroupTo = processGroupFrom;
     pid_t *processGroupToPtr=&processGroupTo, *processGroupFromPtr=&processGroupFrom;
-    int pipeSides[2];
+    int pipeSides[2] = {0,0};
 
     void commandFromBuiltinExecution();
     void commandFromNonBuiltinExecution();
@@ -196,6 +197,7 @@ private:
 protected:
     unique_ptr<Command> commandFrom= nullptr, commandTo=nullptr;
 
+    bool isRedirectionCommand = false;
 public:
     PipeCommand(std::string cmd_line, SmallShell* smash);
     PipeCommand(unique_ptr<Command> commandFrom, unique_ptr<Command> commandTo, SmallShell *smash);
