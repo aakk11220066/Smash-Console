@@ -12,20 +12,22 @@
 
 ProcessControlBlock::ProcessControlBlock(const job_id_t jobId,
     const pid_t processId,
-    const std::string& creatingCommand,
-    const int duration) :
+    const std::string& creatingCommand) :
 
     jobId(jobId),
     processId(processId),
-    processGroupId(processId),
+    //ROI greyed out to avoid error
+    //processGroupId(processId),
     creatingCommand(creatingCommand),
-    startTime(time(nullptr)),
-    //ROI field for timed processes
-    duration(duration) {}
+    startTime(time(nullptr))
+    {}
 
+//ROI - greyed your part to avoid errors
+/*
 pid_t ProcessControlBlock::getProcessGroupId() const {
     return processGroupId;
 }
+ */
 
 const job_id_t ProcessControlBlock::getJobId() const {
     return jobId;
@@ -103,3 +105,46 @@ void ProcessControlBlock::resetStartTime() {
 std::ostream& operator<<(std::ostream &outstream, ProcessControlBlock &pcb) {
     return outstream << pcb.getCreatingCommand() << " : " << pcb.getProcessId();
 }
+
+
+//Roi timed process functions
+TimedProcessControlBlock::TimedProcessControlBlock(const job_id_t jobId,
+                                                   const pid_t processId,
+                                                   const std::string& creatingCommand, int futureSeconds) :
+        ProcessControlBlock(jobId, processId, creatingCommand),
+        abortTime(startTime+futureSeconds)
+{}
+
+time_t TimedProcessControlBlock::getAbortTime() const {
+    return abortTime;
+}
+
+//akba TimedProcessControlBlock* timed_pcb
+
+bool TimedProcessControlBlock::operator==(const TimedProcessControlBlock &rhs) const {
+    return (abortTime == rhs.abortTime) && (jobId == rhs.jobId);
+}
+
+bool TimedProcessControlBlock::operator!=(const TimedProcessControlBlock &rhs) const {
+    return !(rhs == *this);
+}
+
+bool TimedProcessControlBlock::operator<(const TimedProcessControlBlock &rhs) const {
+    if ((abortTime == rhs.abortTime)) return jobId < rhs.jobId; //this shouldn;t happen
+    return (abortTime < rhs.abortTime);
+}
+
+bool TimedProcessControlBlock::operator>(const TimedProcessControlBlock &rhs) const {
+    return rhs < *this;
+}
+
+bool TimedProcessControlBlock::operator<=(const TimedProcessControlBlock &rhs) const {
+    return !(rhs < *this);
+}
+
+bool TimedProcessControlBlock::operator>=(const TimedProcessControlBlock &rhs) const {
+    return !(*this < rhs);
+}
+
+
+

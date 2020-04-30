@@ -12,7 +12,7 @@
 typedef unsigned int job_id_t;
 
 class ProcessControlBlock {
-private:
+protected:
     //process data
     job_id_t jobId;
     pid_t processId;
@@ -23,8 +23,6 @@ private:
 
 public:
     void setJobId(job_id_t jobId);
-    //ROI - field for timed process
-    int duration;
 
     time_t getStartTime() const;
 
@@ -58,10 +56,42 @@ public:
 
     ProcessControlBlock(const job_id_t jobId,
                         const pid_t processId,
-                        const std::string &creatingCommand, const int duration = -1);
+                        const std::string &creatingCommand);
+
+    // ROI - added default to avoid error in build
+    virtual ~ProcessControlBlock() = default;
+};
+
+
+class TimedProcessControlBlock : public ProcessControlBlock {
+private:
+    //ROI - field for timed process
+    time_t abortTime;
+
+public:
+    TimedProcessControlBlock(const job_id_t jobId,
+                             const pid_t processId,
+                             const std::string &creatingCommand, int futureSeconds);
+
+    time_t getAbortTime() const;
+
+    bool operator<(const TimedProcessControlBlock &rhs) const;
+
+    bool operator>(const TimedProcessControlBlock &rhs) const;
+
+    bool operator<=(const TimedProcessControlBlock &rhs) const;
+
+    bool operator>=(const TimedProcessControlBlock &rhs) const;
+
+    bool operator==(const TimedProcessControlBlock &rhs) const;
+
+    bool operator!=(const TimedProcessControlBlock &rhs) const;
 
     pid_t getProcessGroupId() const;
+
+    virtual ~TimedProcessControlBlock() = default;
 };
+
 
 std::ostream& operator<<(std::ostream& outstream, ProcessControlBlock& pcb);
 

@@ -23,7 +23,7 @@ typedef unsigned int signal_t;
 class Command;
 class SmallShell;
 
-bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCodeReturned=nullptr);
+//bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCodeReturned=nullptr);
 
 using std::string;
 using std::unique_ptr;
@@ -40,7 +40,7 @@ public:
 class JobsManager {
 public:
     //ROI - list of timed processes
-    std::list<ProcessControlBlock*> timed_processes;
+    std::list<TimedProcessControlBlock> timed_processes;
 private:
     //Dictionary mapping job_id to process
     std::map<job_id_t, ProcessControlBlock> processes;
@@ -57,7 +57,7 @@ public:
     JobsManager(SmallShell& smash);
     ~JobsManager() = default;
     // ROI
-    void addJob(const Command& cmd, pid_t pid, int duration = -1);
+    void addJob(const Command& cmd, pid_t pid);
     void addJob(const ProcessControlBlock& pcb);
     void printJobsList();
     void killAllJobs();
@@ -70,14 +70,26 @@ public:
     void unpauseJob(job_id_t jobId);
     void registerUnpauseJob(job_id_t jobId); //administrative side of unpausing job
     bool isEmpty();
+
+
+//ROI
+// note that -2 in pid and jid implies a builtin command
+    void addTimedProcess(const job_id_t jobId,
+                                      const pid_t processId,
+                                      const std::string& creatingCommand, int futureSeconds);
+
+
+    void setAlarmSignal() const;
+
+
 };
 
 class SmallShell {
 private:
     SmallShell();
 
-    bool isForgroundTimed = false;
-    bool hasProcessTimedOut = false;
+    //bool isForgroundTimed = false;
+    //bool hasProcessTimedOut = false;
     std::string smashPrompt = "smash> ";
 
     std::string lastPwd = "";
@@ -98,16 +110,17 @@ public:
     signal_t escapeSmashProcessGroup();
 public:
     void RemoveLateProcess(const pid_t); //ROI
-    ProcessControlBlock* getLateProcess(); //ROI
-    void RemoveLateProcess(const job_id_t); //ROI
+    TimedProcessControlBlock *getLateProcess(); //ROI
+    void RemoveLateProcesses(); //ROI
     const std::string &getLastPwd() const;
     void setLastPwd(const std::string &lastPwd);
     bool sendSignal(signal_t signum, job_id_t jobId);
+    /*
     bool getIsForgroundTimed() const; //ROI
     void setIsForgroundTimed(bool value); //ROI
     bool getHasProcessTimedOut() const; //ROI
     void setHasProcessTimedOut(bool value); //ROI
-
+     */
     JobsManager jobs;
 
 public:
@@ -143,6 +156,8 @@ public:
     bool invalid = false;
     std::string cmd_line;
     bool isBuiltIn = false;
+    bool isTimeOut = false;
+    int waitNumber = 0;
 
 public:
     Command(std::string cmd_line, SmallShell* smash);
