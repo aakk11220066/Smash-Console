@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <limits.h>
+#include <type_traits>
 #include "Commands.h"
 
 using namespace std;
@@ -34,8 +35,8 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 /// \param sig_num signal number to send
 /// \param errCodeReturned where to return error code to [optional]
 /// \return true if succeeded, false if failed to send signal
-bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCodeReturned=nullptr) {
-    bool result = killpg(pcb.getProcessGroupId(), sig_num) >= 0;
+bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCodeReturned) {
+    bool result = (killpg(pcb.getProcessGroupId(), sig_num) >= 0);
     if (errCodeReturned) *errCodeReturned = errno;
     return result;
 }
@@ -340,8 +341,7 @@ ChangeDirCommand::ChangeDirCommand(string cmd_line, SmallShell *smash) : BuiltIn
 void ChangeDirCommand::execute() {
     if (args.size() - 1 > 1) throw SmashExceptions::TooManyArgumentsException("cd");
 
-    //TODO: verify that this is the required exception message
-    if (args.size() - 1 < 1) throw SmashExceptions::TooFewArgumentsException("cd");
+    if (args.size() - 1 < 1) return;
 
     assert(smash);
     if (args[1] == "-" && smash->getLastPwd() == "") {
@@ -365,16 +365,14 @@ void JobsCommand::execute() {
     smash->jobs.printJobsList();
 }
 
-//TODO: also update stopped jobs that they are stopped
 void JobsManager::removeFinishedJobs() {
     std::list<job_id_t> targets;
     for (pair<job_id_t, ProcessControlBlock> job : processes) {
-        if (waitpid(job.second.getProcessId(), nullptr, WNOHANG)<0) throw SmashExceptions::SyscallException("waitpid");
+        if (waitpid(job.second.getProcessId(), nullptr, WNOHANG | WUNTRACED)<0) throw SmashExceptions::SyscallException("waitpid");
         int killStatus = kill(job.second.getProcessId(), 0);
         if (killStatus < 0 && errno == 3) {
             targets.push_back(job.first);
         } else if (killStatus < 0) {
-            DEBUG_PRINT("removeFinishedJobs kill failed with errno=" << errno);
             throw SmashExceptions::SyscallException("kill");
         }
     }
@@ -438,7 +436,11 @@ void JobsManager::unpauseJob(job_id_t jobId) {
     bool signalSendStatus = smash.sendSignal(SIGCONT, jobId);
     assert(signalSendStatus);
 
+    registerUnpauseJob(jobId);
+}
+void JobsManager::registerUnpauseJob(job_id_t jobId) {
     ProcessControlBlock *pcb = getJobById(jobId);
+    assert(pcb);
     //inform process manager that it is running now
     pcb->setRunning(true);
 
@@ -509,23 +511,25 @@ void KillCommand::execute() {
         throw SmashExceptions::Exception("kill", "job-id " + to_string(jobId) + " does not exist");
     }
 
-    int signalSendStatus = ::sendSignal(*pcbPtr, signum);
-    if (signalSendStatus) {
+    bool signalSendStatus = ::sendSignal(*pcbPtr, signum);
+    if (!signalSendStatus) {
         if (!verbose) throw SmashExceptions::SignalSendException();
-        DEBUG_PRINT("Kill command failed");
         throw SmashExceptions::SyscallException("kill");
     }
 
-    if (signum == SIGSTOP) smash->jobs.pauseJob(jobId);
+    //if this is wait/continue signal, update JobsManager as well
+    bool stopSignal = (signum==SIGSTOP || signum==SIGTSTP || signum==SIGTTIN || signum==SIGTTOU);
+    bool contSignal = (signum==SIGCONT);
+    if (stopSignal) smash->jobs.pauseJob(jobId);
+    if (contSignal) smash->jobs.registerUnpauseJob(jobId);
 
     if (verbose) cout << "signal number " << signum << " was sent to pid " << pcbPtr->getProcessId() << endl;
 }
 
-BuiltInCommand::BuiltInCommand(string cmd_line, SmallShell *smash) : Command(_removeBackgroundSign(cmd_line), smash) {}
+BuiltInCommand::BuiltInCommand(string cmd_line, SmallShell *smash) : Command(_removeBackgroundSign(cmd_line), smash){
+    isBuiltIn = true;
+}
 
-//TODO: test fg with no arguments (check that maximal jobId selected)
-//TODO: test fg with stopped process
-//TODO: test to make sure fg removes job from jobs list
 ForegroundCommand::ForegroundCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cmd_line, smash) {
     try {
         if (args.size() - 1 > 1) throw std::invalid_argument("Too many args");
@@ -611,8 +615,6 @@ void BackgroundableCommand::execute() {
         DEBUG_PRINT("process "<<getppid()<<" forked a son for backgroundablecommand "<<cmd_line<<" with pid="<<getpid());
         smash->escapeSmashProcessGroup();
 
-        DEBUG_PRINT("Process group="<<getpgrp()<<", pid="<<getpid());
-
         executeBackgroundable();
         exit(0);
     } else {
@@ -623,8 +625,6 @@ void BackgroundableCommand::execute() {
             smash->setForegroundProcess(&foregroundPcb);
             const int waitStatus = waitpid(pid, nullptr, WUNTRACED);
             if (waitStatus < 0) {
-                DEBUG_PRINT("backgroundablecommand waitpid failed with pid=" << pid << ", waitStatus=" << waitStatus
-                                                                             << ", and errno=" << errno<<" which is "<<strerror(errno));
                 throw SmashExceptions::SyscallException("waitpid");
             }
             smash->setForegroundProcess(nullptr);
@@ -642,8 +642,6 @@ void BackgroundableCommand::execute() {
 
 
 PipeCommand::PipeCommand(std::string cmd_line, SmallShell *smash) : BackgroundableCommand(cmd_line, smash) {
-    //TODO: verify that if not given 2 commands then need to invalidate
-    //TODO: verify that if one of the commands fails need to return error of that command
     unsigned short pipeIndex = cmd_line.find_first_of('|');
     //sanitize inputs
     if (!(cmd_line.size() > pipeIndex + 1)) throw SmashExceptions::InvalidArgumentsException("pipe");
@@ -662,46 +660,85 @@ PipeCommand::PipeCommand(std::string cmd_line, SmallShell *smash) : Backgroundab
     commandTo = smash->CreateCommand(cmd_lineTo);
     assert(commandTo && commandFrom);
     invalid = commandFrom->invalid && commandTo->invalid;
+
+    //create pipe
+    if (pipe(pipeSides)<0) throw SmashExceptions::SyscallException("pipe");
 }
 
+
 PipeCommand::PipeCommand(std::unique_ptr<Command> commandFrom, std::unique_ptr<Command> commandTo, SmallShell *smash) :
-        BackgroundableCommand(cmd_line, smash), commandFrom(std::move(commandFrom)), commandTo(std::move(commandTo)) {}
+        BackgroundableCommand(cmd_line, smash), commandFrom(std::move(commandFrom)),
+        commandTo(std::move(commandTo)) {
 
-void PipeCommand::executeBackgroundable() {
     //create pipe
-    int pipeSides[2];
-    if (pipe(pipeSides)) throw SmashExceptions::SyscallException("pipe");
+    if (pipe(pipeSides)<0) throw SmashExceptions::SyscallException("pipe");
+}
 
-    //run commandFrom fork
-    if ((pidFrom = fork()) < 0) throw SmashExceptions::SyscallException("fork");
-    if (!pidFrom) {
+void PipeCommand::commandFromBuiltinExecution() {
+    if (!pidFrom){
+        exit(0);
+    }
+    else {
+        typedef int fd_number_t;
+        fd_number_t outputAddress = errPipe ? STDERR_FILENO : STDOUT_FILENO;
+
+        //duplicate stdout/stderr
+        fd_number_t stdoutCopy = dup(outputAddress);
+
+        //replace stdout/err with pipe write side
+        if (dup2(pipeSides[1], outputAddress) < 0)
+            throw SmashExceptions::SyscallException("dup2");
+        //execute commandFrom
+        commandFrom->execute();
+
+        //restore stdout/err
+        if (dup2(stdoutCopy, outputAddress)<0) throw SmashExceptions::SyscallException("dup2");
+        //close duplicate
+        if (close(stdoutCopy)<0) throw SmashExceptions::SyscallException("close");
+    }
+}
+
+void PipeCommand::commandFromNonBuiltinExecution() {
+    if (!pidFrom){
         *processGroupFromPtr = smash->escapeSmashProcessGroup();
-        if (signal(SIGCONT, SIG_DFL) == SIG_ERR) throw SmashExceptions::SyscallException("signal");
-        DEBUG_PRINT("process "<<getppid()<<" forked a son for pipe commandFrom "<<commandFrom->cmd_line<<" with pid="<<getpid());
+        DEBUG_PRINT("process " << getppid() << " forked a son for pipe commandFrom " << commandFrom->cmd_line
+                               << " with pid=" << getpid());
         //close pipe read side
-        if (close(pipeSides[0])) throw SmashExceptions::SyscallException("close");
+        if (close(pipeSides[0]) < 0) throw SmashExceptions::SyscallException("close");
         //replace stdout with pipe write side
         if (dup2(pipeSides[1], errPipe ? STDERR_FILENO : STDOUT_FILENO) < 0)
             throw SmashExceptions::SyscallException("dup2");
-        //execute commandFrom //TODO: test if command is showpid, needs to print original smash pid
+        //execute commandFrom
         commandFrom->execute();
         exit(0);
-    } else {
-        //run commandTo fork
-        if ((pidTo = fork()) < 0) throw SmashExceptions::SyscallException("fork");
-        if (!pidTo) {
-            *processGroupToPtr = smash->escapeSmashProcessGroup();
-            if (signal(SIGCONT, SIG_DFL) == SIG_ERR) throw SmashExceptions::SyscallException("signal");
-            DEBUG_PRINT("process "<<getppid()<<" forked a son for pipe commandTo "<<commandTo->cmd_line<<" with pid="<<getpid());
-            //close pipe write side
-            if (close(pipeSides[1])) throw SmashExceptions::SyscallException("close");
-            //replace stdin with pipe read side
-            if (dup2(pipeSides[0], STDIN_FILENO) < 0) throw SmashExceptions::SyscallException("dup2");
-            //execute commandTo
-            commandTo->execute();
-            exit(0);
-        } else {
-            //parent
+    }
+}
+
+void PipeCommand::commandFromExecution() {
+    if ((pidFrom = fork()) < 0) throw SmashExceptions::SyscallException("fork");
+    if (!(commandFrom->isBuiltIn)) commandFromNonBuiltinExecution();
+    else commandFromBuiltinExecution();
+}
+
+void PipeCommand::commandToExecution() {
+    if ((pidTo = fork()) < 0) throw SmashExceptions::SyscallException("fork");
+    if (!pidTo) {
+        *processGroupToPtr = smash->escapeSmashProcessGroup();
+        DEBUG_PRINT("process "<<getppid()<<" forked a son for pipe commandTo "<<commandTo->cmd_line<<" with pid="<<getpid());
+        //close pipe write side
+        if (close(pipeSides[1]) < 0) throw SmashExceptions::SyscallException("close");
+        //replace stdin with pipe read side
+        if (dup2(pipeSides[0], STDIN_FILENO) < 0) throw SmashExceptions::SyscallException("dup2");
+        //execute commandTo
+        commandTo->execute();
+        exit(0);
+    }
+}
+void PipeCommand::executeBackgroundable() {
+    commandFromExecution();
+    if (pidFrom) { //parent process
+        commandToExecution();
+        if (pidTo) {//parent process
             if (close(pipeSides[0]) || close(pipeSides[1])) throw SmashExceptions::SyscallException("close");
 
             wait(nullptr);
@@ -730,17 +767,12 @@ unsigned short indicator(bool condition) {
     return condition ? 1 : 0;
 }
 
-//TODO: RedirectionCommand should not fork first command if first command is builtin?
 RedirectionCommand::RedirectionCommand(unique_ptr<Command> commandFrom, string filename, bool append,
-                                       SmallShell *smash) try:
+                                       SmallShell *smash) :
         PipeCommand(std::move(commandFrom), unique_ptr<Command>(new WriteCommand(filename, append, smash)), smash) {}
-catch (SmashExceptions::FileOpenException &e) {
-    DEBUG_PRINT("Failed to open file " << filename << ".  errno = " << errno);
-    throw SmashExceptions::InvalidArgumentsException("redirection");
-}
+
 
 #define OPERATOR_POSITION (cmd_line.find_first_of('>'))
-
 RedirectionCommand::RedirectionCommand(std::string cmd_line, SmallShell *smash) :
         RedirectionCommand(smash->CreateCommand(cmd_line.substr(0, OPERATOR_POSITION)),
                            _trim(cmd_line.substr(OPERATOR_POSITION + 1
@@ -758,7 +790,7 @@ RedirectionCommand::WriteCommand::WriteCommand(string fileName, bool append, Sma
         Command("write_into " + fileName, smash) {
 
     sink.open(fileName, append ? std::ofstream::app : std::ofstream::trunc);
-    if (sink.failbit & sink.rdstate()) throw SmashExceptions::FileOpenException();
+    if (sink.failbit & sink.rdstate()) throw SmashExceptions::SyscallException("open");
 }
 
 void RedirectionCommand::WriteCommand::execute() {
@@ -774,7 +806,7 @@ RedirectionCommand::WriteCommand::~WriteCommand() {
     sink.close();
 }
 
-CopyCommand::CopyCommand(string cmd_line, SmallShell *smash) try:
+CopyCommand::CopyCommand(string cmd_line, SmallShell *smash) :
         RedirectionCommand(unique_ptr<Command>(
                 new ReadCommand(initArgs(cmd_line).at(1), smash)),
                            initArgs(cmd_line).at(2),
@@ -783,13 +815,10 @@ CopyCommand::CopyCommand(string cmd_line, SmallShell *smash) try:
 
     this->cmd_line = cmd_line;
     args = initArgs(cmd_line);
-    //TODO: verify that if copy does not receive 2 arguments need to throw invalid arguments
-    if (args.size() - 1 != 2) throw SmashExceptions::InvalidArgumentsException("cp");
+    if (args.size() - 1 < 2) throw SmashExceptions::InvalidArgumentsException("cp");
     backgroundRequest = _isBackgroundComamnd(cmd_line);
-} //TODO: verify that if input is not 2 filepaths then need to invalidate
-catch (SmashExceptions::FileOpenException &e) {
-    throw SmashExceptions::InvalidArgumentsException("cp");
 }
+
 
 
 void CopyCommand::execute() {
@@ -800,7 +829,7 @@ CopyCommand::ReadCommand::ReadCommand(string fileName, SmallShell *smash) :
         Command("read_from " + fileName, smash) {
 
     source.open(fileName);
-    if (source.failbit & source.rdstate()) throw SmashExceptions::FileOpenException();
+    if (source.failbit & source.rdstate()) throw SmashExceptions::SyscallException("open");
 }
 
 
@@ -834,6 +863,7 @@ TimeoutCommand::TimeoutCommand(string cmd_line, SmallShell *smash) : Command(cmd
     inner_cmd_line = trimmed_cmd.substr(trimmed_cmd.find_first_of(str_number) + str_number.length() + 1,
                                         trimmed_cmd.length() + 1);
 
+    /*
     //check to avoid timeout loop in command, if it exists i distort it so that CreatingCommand fails regularly, but removing the 1st letter
     string opcode = inner_cmd_line.substr(0, inner_cmd_line.find_first_of(WHITESPACE));
     if (("timeout") == opcode) inner_cmd_line.erase(0, 1);
@@ -842,7 +872,7 @@ TimeoutCommand::TimeoutCommand(string cmd_line, SmallShell *smash) : Command(cmd
         (("quit") == opcode)) {
         isBuiltIn = true;
     }
-
+    */ //AKIVA - set BuiltInCommand constructor to set isBuiltIn=true
 
     innerCommand = smash->CreateCommand(inner_cmd_line);
     //set cmd_line for inner command to include 'timeout' in string

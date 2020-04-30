@@ -52,6 +52,7 @@ private:
     job_id_t maxIndex = 0;
 
     job_id_t resetMaxIndex();
+
 public:
     JobsManager(SmallShell& smash);
     ~JobsManager() = default;
@@ -67,6 +68,7 @@ public:
     ProcessControlBlock *getLastStoppedJob();
     void pauseJob(job_id_t jobId);
     void unpauseJob(job_id_t jobId);
+    void registerUnpauseJob(job_id_t jobId); //administrative side of unpausing job
     bool isEmpty();
 };
 
@@ -184,6 +186,12 @@ private:
     pid_t processGroupFrom = getpgrp();
     pid_t processGroupTo = processGroupFrom;
     pid_t *processGroupToPtr=&processGroupTo, *processGroupFromPtr=&processGroupFrom;
+    int pipeSides[2];
+
+    void commandFromBuiltinExecution();
+    void commandFromNonBuiltinExecution();
+    void commandFromExecution();
+    void commandToExecution();
 
 protected:
     unique_ptr<Command> commandFrom= nullptr, commandTo=nullptr;
