@@ -692,8 +692,8 @@ PipeCommand::PipeCommand(std::string cmd_line, SmallShell *smash) : Backgroundab
 
     if (cmd_line[pipeIndex + 1] == '&') errPipe = true;
 
-    const string cmd_lineFrom = cmd_line.substr(0, pipeIndex);
-    const string cmd_lineTo = cmd_line.substr(pipeIndex + 1 + (errPipe ? 1 : 0));
+    const string cmd_lineFrom = _removeBackgroundSign(cmd_line.substr(0, pipeIndex));
+    const string cmd_lineTo = _removeBackgroundSign(cmd_line.substr(pipeIndex + 1 + (errPipe ? 1 : 0)));
 
     /*bool backgroundCommand = _isBackgroundComamnd(cmd_line);
 
@@ -787,6 +787,7 @@ void PipeCommand::commandToExecution() {
 }
 
 void PipeCommand::executeBackgroundable() {
+    DEBUG_PRINT("commandFrom.cmd_line="<<commandFrom->cmd_line<<", commandTo.commandLine="<<commandTo->cmd_line);
     //create pipe
     if (pipe(pipeSides)) throw SmashExceptions::SyscallException("pipe");
 
@@ -797,8 +798,9 @@ void PipeCommand::executeBackgroundable() {
             //parent
             if (close(pipeSides[0]) || close(pipeSides[1])) throw SmashExceptions::SyscallException("close");
 
-            wait(nullptr);
-            wait(nullptr);
+            //wait for commandTo fork and for commandFrom fork to finish
+            if (wait(nullptr)<0) throw SmashExceptions::SyscallException("wait");
+            if (wait(nullptr)<0) throw SmashExceptions::SyscallException("wait");
             pidFrom = pidTo = -1;
         }
     }
@@ -835,7 +837,7 @@ RedirectionCommand::RedirectionCommand(unique_ptr<Command> commandFrom, string f
 #define OPERATOR_POSITION (cmd_line.find_first_of('>'))
 RedirectionCommand::RedirectionCommand(std::string cmd_line, SmallShell *smash) :
         RedirectionCommand(smash->CreateCommand(cmd_line.substr(0, OPERATOR_POSITION)),
-                           _trim(cmd_line.substr(OPERATOR_POSITION + 1
+                           _trim(_removeBackgroundSign(cmd_line).substr(OPERATOR_POSITION + 1
                                                  + indicator(cmd_line.at(1 + OPERATOR_POSITION) == '>'))),
                            cmd_line.at(1 + OPERATOR_POSITION) == '>',
                             smash) {}
