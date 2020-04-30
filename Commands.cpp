@@ -29,6 +29,16 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 #define DEBUG_PRINT(err_msg) cerr << "DEBUG: " << err_msg << endl
 #define DIGITS "1234567890"
 
+/// USE THIS WHEN SENDING ORDERS TO PROCESSES THAT SHOULD AFFECT PROCESS'S CHILDREN!
+/// \param pcb process control block representing process to send signal to
+/// \param sig_num signal number to send
+/// \param errCodeReturned where to return error code to [optional]
+/// \return true if succeeded, false if failed to send signal
+bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCodeReturned=nullptr) {
+    bool result = killpg(pcb.getProcessGroupId(), sig_num) >= 0;
+    if (errCodeReturned) *errCodeReturned = errno;
+    return result;
+}
 
 template<>
 ProcessControlBlock* Heap<ProcessControlBlock*>::getMax() {
@@ -159,7 +169,7 @@ ProcessControlBlock *SmallShell::getLateProcess() //ROI
         if (difftime(time(nullptr), pcb->getStartTime()) == pcb->duration) {
             int waitPidStatus = waitpid(pcb->getProcessId(), nullptr, WNOHANG);
             int killStatus = kill(pcb->getProcessId(), 0);
-            if (killStatus < 0 && errno == 3) {
+            if (killStatus < 0 && errno == ESRCH) {
                 setHasProcessTimedOut(true);
                 return nullptr;
             }
@@ -242,7 +252,7 @@ void SmallShell::setForegroundProcess(const ProcessControlBlock *foregroundProce
 
 SmallShell::~SmallShell() {
     if (foregroundProcess) {
-        if (kill(foregroundProcess->getProcessId(), SIGKILL) < 0) std::cerr << "smash error: kill failed" << endl;
+        if (!::sendSignal(*foregroundProcess, SIGKILL)) std::cerr << "smash error: kill failed" << endl;
     }
     executeCommand("quit");
 }
@@ -261,6 +271,13 @@ bool SmallShell::getHasProcessTimedOut() const{
 
 void SmallShell::setHasProcessTimedOut(bool value){
     hasProcessTimedOut = value;
+}
+
+signal_t SmallShell::escapeSmashProcessGroup() {
+    if (getpgrp() == smashProcessGroup){ //only escape smash process group
+        if (setpgrp() < 0) throw SmashExceptions::SyscallException("setpgrp");
+    }
+    return getpgrp();
 }
 
 
@@ -492,7 +509,7 @@ void KillCommand::execute() {
         throw SmashExceptions::Exception("kill", "job-id " + to_string(jobId) + " does not exist");
     }
 
-    int signalSendStatus = kill(pcbPtr->getProcessId(), signum);
+    int signalSendStatus = ::sendSignal(*pcbPtr, signum);
     if (signalSendStatus) {
         if (!verbose) throw SmashExceptions::SignalSendException();
         DEBUG_PRINT("Kill command failed");
@@ -592,9 +609,9 @@ void BackgroundableCommand::execute() {
     if (pid < 0) throw SmashExceptions::SyscallException("fork");
     if (pid == 0) {
         DEBUG_PRINT("process "<<getppid()<<" forked a son for backgroundablecommand "<<cmd_line<<" with pid="<<getpid());
-        if (getpgrp() == smash->smashProcessGroup){ //only escape smash process group
-            if (setpgrp() < 0) throw SmashExceptions::SyscallException("setpgrp");
-        }
+        smash->escapeSmashProcessGroup();
+
+        DEBUG_PRINT("Process group="<<getpgrp()<<", pid="<<getpid());
 
         executeBackgroundable();
         exit(0);
@@ -658,6 +675,7 @@ void PipeCommand::executeBackgroundable() {
     //run commandFrom fork
     if ((pidFrom = fork()) < 0) throw SmashExceptions::SyscallException("fork");
     if (!pidFrom) {
+        *processGroupFromPtr = smash->escapeSmashProcessGroup();
         if (signal(SIGCONT, SIG_DFL) == SIG_ERR) throw SmashExceptions::SyscallException("signal");
         DEBUG_PRINT("process "<<getppid()<<" forked a son for pipe commandFrom "<<commandFrom->cmd_line<<" with pid="<<getpid());
         //close pipe read side
@@ -672,6 +690,7 @@ void PipeCommand::executeBackgroundable() {
         //run commandTo fork
         if ((pidTo = fork()) < 0) throw SmashExceptions::SyscallException("fork");
         if (!pidTo) {
+            *processGroupToPtr = smash->escapeSmashProcessGroup();
             if (signal(SIGCONT, SIG_DFL) == SIG_ERR) throw SmashExceptions::SyscallException("signal");
             DEBUG_PRINT("process "<<getppid()<<" forked a son for pipe commandTo "<<commandTo->cmd_line<<" with pid="<<getpid());
             //close pipe write side
@@ -694,15 +713,15 @@ void PipeCommand::executeBackgroundable() {
 
 PipeCommand::~PipeCommand() {
     if (pidFrom != -1) {
-        if (kill(pidFrom, SIGKILL) < 0) {
+        if (killpg(processGroupFrom, SIGKILL) < 0) {
             DEBUG_PRINT("pidFrom = " << pidFrom << " and kill failed with errno = " << errno);
-            cerr << "smash error: kill failed" << endl;
+            cerr << "smash error: killpg failed" << endl;
         }
     }
     if (pidTo != -1) {
-        if (kill(pidTo, SIGKILL) < 0) {
+        if (killpg(processGroupTo, SIGKILL) < 0) {
             DEBUG_PRINT("pidTo = " << pidFrom << " and kill failed with errno = " << errno);
-            cerr << "smash error: kill failed" << endl;
+            cerr << "smash error: killpg failed" << endl;
         }
     }
 }

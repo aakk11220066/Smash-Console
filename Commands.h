@@ -23,6 +23,8 @@ typedef unsigned int signal_t;
 class Command;
 class SmallShell;
 
+bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCodeReturned=nullptr);
+
 using std::string;
 using std::unique_ptr;
 
@@ -79,14 +81,19 @@ private:
     std::string lastPwd = "";
 
     const ProcessControlBlock* foregroundProcess = nullptr;
+
+    const pid_t smashProcessGroup;
 public:
     const ProcessControlBlock *getForegroundProcess() const;
     ProcessControlBlock *getForegroundProcess1() const;
 
     void setForegroundProcess(const ProcessControlBlock *foregroundProcess);
 
-    pid_t smashPid;
-    pid_t smashProcessGroup;
+    const pid_t smashPid;
+
+    /// change process group to a different one from that of the smash
+    /// \return new process group
+    signal_t escapeSmashProcessGroup();
 public:
     void RemoveLateProcess(const pid_t); //ROI
     ProcessControlBlock* getLateProcess(); //ROI
@@ -174,6 +181,9 @@ class PipeCommand : public BackgroundableCommand {
 private:
     bool errPipe = false;
     int pidFrom=-1, pidTo=-1;
+    pid_t processGroupFrom = getpgrp();
+    pid_t processGroupTo = processGroupFrom;
+    pid_t *processGroupToPtr=&processGroupTo, *processGroupFromPtr=&processGroupFrom;
 
 protected:
     unique_ptr<Command> commandFrom= nullptr, commandTo=nullptr;
