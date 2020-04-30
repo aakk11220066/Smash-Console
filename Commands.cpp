@@ -8,7 +8,6 @@
 #include <sys/types.h>
 #include <iomanip>
 #include <algorithm>
-//#include <linux/limits.h>
 #include <limits.h>
 #include "Commands.h"
 
@@ -122,7 +121,7 @@ string _removeBackgroundSign(string cmd_line) {
 
 
 
-SmallShell::SmallShell() : smashPid(getpid()), jobs(*this) {}
+SmallShell::SmallShell() : smashPid(getpid()), smashProcessGroup(getpgrp()), jobs(*this) {}
 
 /**
 * Creates and returns a pointer to Command class which matches the given command line (cmd_line)
@@ -305,7 +304,7 @@ void GetCurrDirCommand::execute() {
 }
 
 ChangeDirCommand::ChangeDirCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cmd_line,
-                                                                                        smash) {} //FIXME: badly formed argument fails instead of throwing failure result
+                                                                                        smash) {}
 
 void ChangeDirCommand::execute() {
     if (args.size() - 1 > 1) throw SmashExceptions::TooManyArgumentsException("cd");
@@ -335,6 +334,7 @@ void JobsCommand::execute() {
     smash->jobs.printJobsList();
 }
 
+//TODO: also update stopped jobs that they are stopped
 void JobsManager::removeFinishedJobs() {
     std::list<job_id_t> targets;
     for (pair<job_id_t, ProcessControlBlock> job : processes) {
@@ -529,8 +529,6 @@ void ForegroundCommand::execute() {
     }
 }
 
-//TODO: make bg return "there is no stopped jobs to resume" when all of background is running and no arguments given (management of waitingHeap faulty) - lines that add/remove from the heap are 325, 367, 377
-//FIXME: background fails on no arguments
 BackgroundCommand::BackgroundCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cmd_line, smash) {
     //sanitize inputs
     //set jobId = args[0] or lastStoppedCommand if none specified
@@ -580,7 +578,9 @@ void BackgroundableCommand::execute() {
     if (pid < 0) throw SmashExceptions::SyscallException("fork");
     if (pid == 0) {
         DEBUG_PRINT("process "<<getppid()<<" forked a son for backgroundablecommand "<<cmd_line<<" with pid="<<getpid());
-        if (setpgrp() < 0) throw SmashExceptions::SyscallException("setpgrp");
+        if (getpgrp() == smash->smashProcessGroup){ //only escape smash process group
+            if (setpgrp() < 0) throw SmashExceptions::SyscallException("setpgrp");
+        }
 
         executeBackgroundable();
         exit(0);
@@ -609,7 +609,6 @@ void BackgroundableCommand::execute() {
 }
 
 
-//TODO: pipe command should redirect signals to children
 PipeCommand::PipeCommand(std::string cmd_line, SmallShell *smash) : BackgroundableCommand(cmd_line, smash) {
     //TODO: verify that if not given 2 commands then need to invalidate
     //TODO: verify that if one of the commands fails need to return error of that command
@@ -637,11 +636,15 @@ PipeCommand::PipeCommand(std::unique_ptr<Command> commandFrom, std::unique_ptr<C
         BackgroundableCommand(cmd_line, smash), commandFrom(std::move(commandFrom)), commandTo(std::move(commandTo)) {}
 
 void PipeCommand::executeBackgroundable() {
+    //create pipe
     int pipeSides[2];
     if (pipe(pipeSides)) throw SmashExceptions::SyscallException("pipe");
 
+    //run commandFrom fork
     if ((pidFrom = fork()) < 0) throw SmashExceptions::SyscallException("fork");
     if (!pidFrom) {
+        if (signal(SIGCONT, SIG_DFL) == SIG_ERR) throw SmashExceptions::SyscallException("signal");
+        DEBUG_PRINT("process "<<getppid()<<" forked a son for pipe commandFrom "<<commandFrom->cmd_line<<" with pid="<<getpid());
         //close pipe read side
         if (close(pipeSides[0])) throw SmashExceptions::SyscallException("close");
         //replace stdout with pipe write side
@@ -651,8 +654,11 @@ void PipeCommand::executeBackgroundable() {
         commandFrom->execute();
         exit(0);
     } else {
+        //run commandTo fork
         if ((pidTo = fork()) < 0) throw SmashExceptions::SyscallException("fork");
         if (!pidTo) {
+            if (signal(SIGCONT, SIG_DFL) == SIG_ERR) throw SmashExceptions::SyscallException("signal");
+            DEBUG_PRINT("process "<<getppid()<<" forked a son for pipe commandTo "<<commandTo->cmd_line<<" with pid="<<getpid());
             //close pipe write side
             if (close(pipeSides[1])) throw SmashExceptions::SyscallException("close");
             //replace stdin with pipe read side

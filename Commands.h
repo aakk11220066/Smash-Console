@@ -85,6 +85,7 @@ public:
     void setForegroundProcess(const ProcessControlBlock *foregroundProcess);
 
     pid_t smashPid;
+    pid_t smashProcessGroup;
 public:
     void RemoveLateProcess(const pid_t); //ROI
     ProcessControlBlock* getLateProcess(); //ROI
@@ -346,9 +347,10 @@ namespace SmashExceptions{
 
 class SmashExceptions::Exception : public std::exception{
 private:
-    std::string errMsg;
     std::string sender;
 
+protected:
+    std::string errMsg;
 public:
     explicit Exception(const std::string& sender, const std::string& errMsg) : errMsg(errMsg),
                                                                                sender(sender){}
