@@ -28,17 +28,20 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 
 #define DEBUG_PRINT(err_msg) cerr << "DEBUG: " << err_msg << endl
 #define DIGITS "1234567890"
+#define BuiltInID -2
 
 /// USE THIS WHEN SENDING ORDERS TO PROCESSES THAT SHOULD AFFECT PROCESS'S CHILDREN!
 /// \param pcb process control block representing process to send signal to
 /// \param sig_num signal number to send
 /// \param errCodeReturned where to return error code to [optional]
 /// \return true if succeeded, false if failed to send signal
+/*
 bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCodeReturned=nullptr) {
     bool result = killpg(pcb.getProcessGroupId(), sig_num) >= 0;
     if (errCodeReturned) *errCodeReturned = errno;
     return result;
 }
+ */
 
 template<>
 ProcessControlBlock* Heap<ProcessControlBlock*>::getMax() {
@@ -164,6 +167,7 @@ std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
 
 ProcessControlBlock *SmallShell::getLateProcess() //ROI
 {
+    /*
     for (ProcessControlBlock *pcb: jobs.timed_processes) {
 
         if (difftime(time(nullptr), pcb->getStartTime()) == pcb->duration) {
@@ -178,9 +182,11 @@ ProcessControlBlock *SmallShell::getLateProcess() //ROI
 
     }
     return nullptr;
+     */
 }
 
 void SmallShell::RemoveLateProcess(job_id_t jobId) {
+    /*
     // erase from map
     jobs.removeJobById(jobId);
     //remove from list
@@ -192,6 +198,7 @@ void SmallShell::RemoveLateProcess(job_id_t jobId) {
 
         }
     }
+     */
 }
 
 
@@ -252,7 +259,9 @@ void SmallShell::setForegroundProcess(const ProcessControlBlock *foregroundProce
 
 SmallShell::~SmallShell() {
     if (foregroundProcess) {
+        /*
         if (!::sendSignal(*foregroundProcess, SIGKILL)) std::cerr << "smash error: kill failed" << endl;
+         */
     }
     executeCommand("quit");
 }
@@ -466,8 +475,8 @@ void JobsManager::killAllJobs() {
     smash.jobs.timed_processes.clear();
 }
 
-void JobsManager::addJob(const Command &cmd, pid_t pid, int duration) {
-    addJob(ProcessControlBlock(maxIndex, pid, cmd.cmd_line, duration));
+void JobsManager::addJob(const Command &cmd, pid_t pid) {
+    addJob(ProcessControlBlock(maxIndex, pid, cmd.cmd_line));
 }
 
 void JobsManager::addJob(const ProcessControlBlock &pcb) {
@@ -493,6 +502,22 @@ job_id_t JobsManager::resetMaxIndex() {
     return maxIndex;
 }
 
+void JobsManager::addTimedProcess(const job_id_t jobId,
+                                  const pid_t processId,
+                                  const std::string& creatingCommand, int futureSeconds){
+    TimedProcessControlBlock timed_pcb = TimedProcessControlBlock(jobId, processId, creatingCommand, futureSeconds);
+    timed_processes.push_front(timed_pcb);
+    //sort processes by futureTime
+    timed_processes.sort();
+}
+
+void JobsManager::setAlarmSignal() const{
+    assert(!timed_processes.empty());
+    int alarmNumber = (int)difftime(timed_processes.begin()->getAbortTime(),time(nullptr));
+    assert(alarmNumber > 0);
+    alarm(alarmNumber);
+}
+
 KillCommand::KillCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cmd_line, smash) {
     try {
         if ((args.size() - 1 != 2) || (args[1][0] != '-')) throw std::invalid_argument("Bad args");
@@ -508,14 +533,14 @@ void KillCommand::execute() {
     if (nullptr == pcbPtr) {
         throw SmashExceptions::Exception("kill", "job-id " + to_string(jobId) + " does not exist");
     }
-
+/*
     int signalSendStatus = ::sendSignal(*pcbPtr, signum);
     if (signalSendStatus) {
         if (!verbose) throw SmashExceptions::SignalSendException();
         DEBUG_PRINT("Kill command failed");
         throw SmashExceptions::SyscallException("kill");
     }
-
+*/
     if (signum == SIGSTOP) smash->jobs.pauseJob(jobId);
 
     if (verbose) cout << "signal number " << signum << " was sent to pid " << pcbPtr->getProcessId() << endl;
@@ -554,10 +579,12 @@ void ForegroundCommand::execute() {
     smash->setForegroundProcess(nullptr);
 
     // ROI - loop to remove timed process in case it ended before the timeout
+    /*
     for (auto it = smash->jobs.timed_processes.begin(); it != smash->jobs.timed_processes.end(); ++it) {
         if (!*it) continue; //AKIVA - to prevent segmentation faults
         if (jobId == (*it)->getJobId()) smash->jobs.timed_processes.erase(it);
     }
+     */
 }
 
 BackgroundCommand::BackgroundCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cmd_line, smash) {
@@ -633,8 +660,8 @@ void BackgroundableCommand::execute() {
         else {
             smash->jobs.addJob(*this, pid);
             // ROI - unknkown change
-            ProcessControlBlock *target = smash->jobs.getJobById(pid);
-            smash->jobs.timed_processes.push_back(target);
+            //ProcessControlBlock *target = smash->jobs.getJobById(pid);
+            //smash->jobs.timed_processes.push_back(target);
 
         }
     }
@@ -852,13 +879,13 @@ TimeoutCommand::TimeoutCommand(string cmd_line, SmallShell *smash) : Command(cmd
 
 }
 
-
 void TimeoutCommand::execute() {
 
     //in case of built-in command
     if (isBuiltIn) {
         innerCommand->execute();
-        alarm(waitNumber);
+        smash->jobs.addTimedProcess(BuiltInID, BuiltInID, " ", waitNumber);
+        smash->jobs.setAlarmSignal();
         return;
     }
 
@@ -877,26 +904,38 @@ void TimeoutCommand::execute() {
         //if !backgroundRequest then wait for son, inform smash that a foreground program is running
         if (!backgroundRequest){
             const job_id_t FG_JOB_ID = 0;
-            ProcessControlBlock foregroundPcb = ProcessControlBlock(FG_JOB_ID, pid, cmd_line, waitNumber);
+            ProcessControlBlock foregroundPcb = ProcessControlBlock(FG_JOB_ID, pid, cmd_line);
             smash->setForegroundProcess(&foregroundPcb);
-            ProcessControlBlock* timed_pcb = smash->getForegroundProcess1();
-            smash->setIsForgroundTimed(true);
+
+            //ROI
+            smash->jobs.addTimedProcess(foregroundPcb.getJobId(), pid, cmd_line, waitNumber);
+            smash->jobs.setAlarmSignal();
+
+            //ProcessControlBlock* timed_pcb = smash->getForegroundProcess1();
+            //smash->setIsForgroundTimed(true);
             //smash->djobs.timed_processes.push_back(timed_pcb);
             const int waitStatus = waitpid(pid, nullptr, WUNTRACED);
             if (waitStatus < 0) throw SmashExceptions::SyscallException("waitpid");
-            smash->setIsForgroundTimed(false);
+            //smash->setIsForgroundTimed(false);
             smash->setForegroundProcess(nullptr);
         }
             //else add to jobs
         else{
             smash->jobs.addJob(*this, pid);
+
+
+            /*
             ProcessControlBlock *foregroundPcb2 = smash->jobs.getLastJob();
             foregroundPcb2->duration = waitNumber;
             foregroundPcb2->setStartTime((time(nullptr)));
             smash->jobs.timed_processes.push_back(foregroundPcb2);
+             */
+            smash->jobs.addTimedProcess(smash->jobs.getLastJob()->getJobId(), pid, cmd_line, waitNumber);
+            smash->jobs.setAlarmSignal();
         }
     }
 }
+
 
 /*
 void TimeoutCommand::execute() {

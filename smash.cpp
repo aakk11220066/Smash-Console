@@ -60,6 +60,7 @@ namespace SignalHandlers {
     }
 
     void alarmHandler(int sig_num) {
+        /*
         // do we need to print we got an alarm anyway? - we do
         cout << "smash: got an alarm" << endl;
         ProcessControlBlock* lateProcess;
@@ -95,6 +96,7 @@ namespace SignalHandlers {
             //shell->jobs.removeJobById(lateProcess->getJobId());
             shell->RemoveLateProcess(lateProcess->getJobId());
         }
+         */
     }
 }
 

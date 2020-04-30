@@ -23,7 +23,7 @@ typedef unsigned int signal_t;
 class Command;
 class SmallShell;
 
-bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCodeReturned=nullptr);
+//bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCodeReturned=nullptr);
 
 using std::string;
 using std::unique_ptr;
@@ -40,7 +40,7 @@ public:
 class JobsManager {
 public:
     //ROI - list of timed processes
-    std::list<ProcessControlBlock*> timed_processes;
+    std::list<TimedProcessControlBlock> timed_processes;
 private:
     //Dictionary mapping job_id to process
     std::map<job_id_t, ProcessControlBlock> processes;
@@ -56,7 +56,7 @@ public:
     JobsManager(SmallShell& smash);
     ~JobsManager() = default;
     // ROI
-    void addJob(const Command& cmd, pid_t pid, int duration = -1);
+    void addJob(const Command& cmd, pid_t pid);
     void addJob(const ProcessControlBlock& pcb);
     void printJobsList();
     void killAllJobs();
@@ -68,6 +68,18 @@ public:
     void pauseJob(job_id_t jobId);
     void unpauseJob(job_id_t jobId);
     bool isEmpty();
+
+
+//ROI
+// note that -2 in pid and jid implies a builtin command
+    void addTimedProcess(const job_id_t jobId,
+                                      const pid_t processId,
+                                      const std::string& creatingCommand, int futureSeconds);
+
+
+    void setAlarmSignal() const;
+
+
 };
 
 class SmallShell {
