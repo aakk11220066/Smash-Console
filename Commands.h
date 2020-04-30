@@ -338,6 +338,12 @@ private:
         virtual ~ReadCommand();
         void execute();
     };
+
+    string getSourceFile(std::vector<std::string> args);
+    string getTargetFile(std::vector<std::string> args);
+
+    bool isSameFile(string fileFrom, string fileTo);
+
 public:
     CopyCommand(string cmd_line, SmallShell* smash);
     virtual ~CopyCommand() = default;
@@ -380,7 +386,7 @@ namespace SmashExceptions{
     class InvalidArgumentsException;
     class SyscallException;
     class TooManyArgumentsException;
-    class TooFewArgumentsException;
+    class SameFileException;
 }
 
 class SmashExceptions::Exception : public std::exception{
@@ -429,9 +435,10 @@ class SmashExceptions::TooManyArgumentsException : public Exception{
 public:
     TooManyArgumentsException(const string& sender) : Exception(sender, "too many arguments"){};
 };
-class SmashExceptions::TooFewArgumentsException : public Exception{
+class SmashExceptions::SameFileException : public Exception{
 public:
-    TooFewArgumentsException(const string& sender) : Exception(sender, "too few arguments"){};
+    SameFileException() : Exception("",""){}
 };
+
 #undef DEBUG_PRINT
 #endif //SMASH_COMMAND_H_

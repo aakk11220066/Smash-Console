@@ -208,7 +208,9 @@ void SmallShell::executeCommand(string cmd_line) {
     try {
         std::unique_ptr<Command> cmd = this->CreateCommand(cmd_line);
         if (!cmd || !cmd->invalid) cmd->execute();
-    } catch (SmashExceptions::Exception &error) {
+    }
+    catch (SmashExceptions::SameFileException& e) {}
+    catch (SmashExceptions::Exception &error) {
         cerr << error.what() << endl;
     }
 }
@@ -322,7 +324,7 @@ void ShowPidCommand::execute() {
 GetCurrDirCommand::GetCurrDirCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cmd_line, smash) {}
 
 string GetCurrDirCommand::getCurrDir() {
-    char *buf = (char *) malloc(sizeof(char) * PATH_MAX);
+    char *buf = (char *) malloc(sizeof(char) * (1+PATH_MAX));
     if (!buf) {
         perror("smash error: malloc failed\n");
         return "";
@@ -787,7 +789,6 @@ void PipeCommand::commandToExecution() {
 }
 
 void PipeCommand::executeBackgroundable() {
-    DEBUG_PRINT("commandFrom.cmd_line="<<commandFrom->cmd_line<<", commandTo.commandLine="<<commandTo->cmd_line);
     //create pipe
     if (pipe(pipeSides)) throw SmashExceptions::SyscallException("pipe");
 
@@ -869,23 +870,51 @@ RedirectionCommand::WriteCommand::~WriteCommand() {
     sink.close();
 }
 
-CopyCommand::CopyCommand(string cmd_line, SmallShell *smash) :
-        RedirectionCommand(unique_ptr<Command>(
-                new ReadCommand(initArgs(cmd_line).at(1), smash)),
-                           initArgs(cmd_line).at(2),
-                           false,
-                           smash) {
+CopyCommand::CopyCommand(string cmd_line, SmallShell *smash) try :
+    RedirectionCommand(
+            unique_ptr<Command>(
+            new ReadCommand(getSourceFile((initArgs(cmd_line))), smash)),
+            getTargetFile(initArgs(cmd_line)),
+            false,
+            smash) {
 
     this->cmd_line = cmd_line;
     args = initArgs(cmd_line);
-    if (args.size() - 1 < 2) throw SmashExceptions::InvalidArgumentsException("cp");
     backgroundRequest = _isBackgroundComamnd(cmd_line);
+} catch (std::out_of_range& e) {
+    throw SmashExceptions::InvalidArgumentsException("cp");
 }
-
 
 
 void CopyCommand::execute() {
     RedirectionCommand::execute();
+}
+
+bool CopyCommand::isSameFile(string fileFrom, string fileTo) {
+    char* fullPathFrom = (char*)malloc(sizeof(char)*(1+PATH_MAX));
+    char* fullPathTo = (char*)malloc(sizeof(char)*(1+PATH_MAX));
+    if (!fullPathFrom || !fullPathTo){
+        if (fullPathFrom) free(fullPathFrom);
+        if (fullPathTo) free(fullPathTo);
+        throw SmashExceptions::SyscallException("malloc");
+    }
+
+    realpath(fileFrom.c_str(), fullPathFrom);
+    realpath(fileTo.c_str(), fullPathTo);
+    bool notResult = strcmp(fullPathFrom, fullPathTo);
+    free(fullPathFrom);
+    free(fullPathTo);
+    return !notResult;
+}
+
+string CopyCommand::getTargetFile(std::vector<std::string> args) {
+    if (isSameFile(args.at(1), args.at(2))) throw SmashExceptions::SameFileException();
+    return args.at(2);
+}
+
+string CopyCommand::getSourceFile(std::vector<std::string> args) {
+    if (args.size()-1 < 2) throw SmashExceptions::InvalidArgumentsException("cp");
+    return args.at(1);
 }
 
 CopyCommand::ReadCommand::ReadCommand(string fileName, SmallShell *smash) :
