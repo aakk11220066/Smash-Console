@@ -84,8 +84,9 @@ namespace SignalHandlers {
 
         //send SIGKILL
         if (lateProcess) {
-            if (kill(lateProcess->getProcessId(), SIGKILL) < 0) {
+            if ((kill(lateProcess->getProcessId(), SIGKILL) < 0) && (shell->getHasProcessTimedOut())) {
                 cerr << "smash error: kill failed" << endl;
+                shell->setHasProcessTimedOut(false);
                 return;
             }
 

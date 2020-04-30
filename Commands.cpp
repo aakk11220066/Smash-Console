@@ -157,6 +157,12 @@ ProcessControlBlock *SmallShell::getLateProcess() //ROI
     for (ProcessControlBlock *pcb: jobs.timed_processes) {
 
         if (difftime(time(nullptr), pcb->getStartTime()) == pcb->duration) {
+            int waitPidStatus = waitpid(pcb->getProcessId(), nullptr, WNOHANG);
+            int killStatus = kill(pcb->getProcessId(), 0);
+            if (killStatus < 0 && errno == 3) {
+                setHasProcessTimedOut(true);
+                return nullptr;
+            }
             return pcb;
         }
 
@@ -249,6 +255,14 @@ void SmallShell::setIsForgroundTimed(bool value) {
     isForgroundTimed = value;
 }
 
+bool SmallShell::getHasProcessTimedOut() const{
+    return hasProcessTimedOut;
+}
+
+void SmallShell::setHasProcessTimedOut(bool value){
+    hasProcessTimedOut = value;
+}
+
 
 std::vector<std::string> initArgs(string cmd_line) {
     const unsigned int MAX_ARGS = 20;
@@ -304,7 +318,7 @@ void GetCurrDirCommand::execute() {
 }
 
 ChangeDirCommand::ChangeDirCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cmd_line,
-                                                                                        smash) {}
+                                                                                        smash) {} //FIXME: badly formed argument fails instead of throwing failure result
 
 void ChangeDirCommand::execute() {
     if (args.size() - 1 > 1) throw SmashExceptions::TooManyArgumentsException("cd");
@@ -592,7 +606,8 @@ void BackgroundableCommand::execute() {
             smash->setForegroundProcess(&foregroundPcb);
             const int waitStatus = waitpid(pid, nullptr, WUNTRACED);
             if (waitStatus < 0) {
-                DEBUG_PRINT("backgroundablecommand waitpid failed with pid="<<pid<<", waitStatus="<<waitStatus<<", and errno="<<errno<<" which is "<<strerror(errno));
+                DEBUG_PRINT("backgroundablecommand waitpid failed with pid=" << pid << ", waitStatus=" << waitStatus
+                                                                             << ", and errno=" << errno);
                 throw SmashExceptions::SyscallException("waitpid");
             }
             smash->setForegroundProcess(nullptr);
@@ -856,8 +871,10 @@ void TimeoutCommand::execute() {
             //else add to jobs
         else{
             smash->jobs.addJob(*this, pid);
-            ProcessControlBlock *target = smash->jobs.getJobById(pid);
-            //smash->jobs.timed_processes.push_back(target);
+            ProcessControlBlock *foregroundPcb2 = smash->jobs.getLastJob();
+            foregroundPcb2->duration = waitNumber;
+            foregroundPcb2->setStartTime((time(nullptr)));
+            smash->jobs.timed_processes.push_back(foregroundPcb2);
         }
     }
 }

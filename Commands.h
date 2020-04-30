@@ -29,7 +29,7 @@ using std::unique_ptr;
 template<class T>
 class Heap : private std::vector<T> {
 public:
-    T getMax();
+    T& getMax();
     void insert(T& newElement);
     void erase (const T& target);
     bool empty();
@@ -73,6 +73,7 @@ private:
     SmallShell();
 
     bool isForgroundTimed = false;
+    bool hasProcessTimedOut = false;
     std::string smashPrompt = "smash> ";
 
     std::string lastPwd = "";
@@ -81,6 +82,7 @@ private:
 public:
     const ProcessControlBlock *getForegroundProcess() const;
     ProcessControlBlock *getForegroundProcess1() const;
+
 
     void setForegroundProcess(const ProcessControlBlock *foregroundProcess);
 
@@ -95,6 +97,8 @@ public:
     bool sendSignal(signal_t signum, job_id_t jobId);
     bool getIsForgroundTimed() const; //ROI
     void setIsForgroundTimed(bool value); //ROI
+    bool getHasProcessTimedOut() const; //ROI
+    void setHasProcessTimedOut(bool value); //ROI
 
     JobsManager jobs;
 
@@ -185,13 +189,15 @@ public:
 class RedirectionCommand : public PipeCommand {
 private:
     bool append = false;
+    short operatorPosition = -1;
+    SmallShell* sanitizeInputs(SmallShell* smash);
     class WriteCommand : public Command{
         std::ofstream sink;
         void writeToSink();
     public:
         explicit WriteCommand(string fileName, bool append, SmallShell* smash);
         virtual ~WriteCommand();
-        virtual void execute() override;
+        void execute() override;
     };
 
 public:
@@ -298,7 +304,7 @@ private:
     public:
         explicit ReadCommand(string fileName, SmallShell* smash);
         virtual ~ReadCommand();
-        void execute();
+        void execute() override;
     };
 public:
     CopyCommand(string cmd_line, SmallShell* smash);
@@ -352,12 +358,11 @@ private:
 protected:
     std::string errMsg;
 public:
-    explicit Exception(const std::string& sender, const std::string& errMsg) : errMsg(errMsg),
-                                                                               sender(sender){}
+    explicit Exception(const std::string& sender, const std::string& errMsg) : sender(sender),
+        errMsg(errMsg){}
 
-    const char* what() const noexcept override{
-        const char* result = ("smash error: "+sender+": "+errMsg).c_str();
-        return result;
+    virtual const char* what(){
+        return ("smash error: "+sender+": "+errMsg).c_str();
     }
 };
 
@@ -378,13 +383,15 @@ public:
     InvalidArgumentsException(const string& sender) : SmashExceptions::Exception(sender, "invalid arguments"){}
 };
 class SmashExceptions::SyscallException : public Exception{
-    string syscallErrMsg;
+    const string& _syscall;
 public:
     SyscallException(const string& _syscall) :
-        Exception(_syscall,_syscall+" failed"), syscallErrMsg("smash error: "+errMsg){
+        _syscall(_syscall),
+        Exception(_syscall,_syscall+" failed"){
+        DEBUG_PRINT("kill command exception thrown");
     };
-    const char* what() const noexcept override{
-        return syscallErrMsg.c_str();
+    const char* what() override{
+        return ("smash error: "+_syscall+" failed").c_str();
     };
 };
 class SmashExceptions::TooManyArgumentsException : public Exception{
