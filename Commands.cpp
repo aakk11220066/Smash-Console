@@ -318,7 +318,7 @@ void GetCurrDirCommand::execute() {
 }
 
 ChangeDirCommand::ChangeDirCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cmd_line,
-                                                                                        smash) {} //FIXME: badly formed argument fails instead of throwing failure result
+                                                                                        smash) {}
 
 void ChangeDirCommand::execute() {
     if (args.size() - 1 > 1) throw SmashExceptions::TooManyArgumentsException("cd");
@@ -607,7 +607,7 @@ void BackgroundableCommand::execute() {
             const int waitStatus = waitpid(pid, nullptr, WUNTRACED);
             if (waitStatus < 0) {
                 DEBUG_PRINT("backgroundablecommand waitpid failed with pid=" << pid << ", waitStatus=" << waitStatus
-                                                                             << ", and errno=" << errno);
+                                                                             << ", and errno=" << errno<<" which is "<<strerror(errno));
                 throw SmashExceptions::SyscallException("waitpid");
             }
             smash->setForegroundProcess(nullptr);
