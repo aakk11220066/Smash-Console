@@ -57,6 +57,7 @@ public:
                         const pid_t processId,
                         const std::string &creatingCommand);
 
+    // ROI - added default to avoid error in build
     virtual ~ProcessControlBlock() = default;
 };
 

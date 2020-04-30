@@ -86,8 +86,8 @@ class SmallShell {
 private:
     SmallShell();
 
-    bool isForgroundTimed = false;
-    bool hasProcessTimedOut = false;
+    //bool isForgroundTimed = false;
+    //bool hasProcessTimedOut = false;
     std::string smashPrompt = "smash> ";
 
     std::string lastPwd = "";
@@ -108,16 +108,17 @@ public:
     signal_t escapeSmashProcessGroup();
 public:
     void RemoveLateProcess(const pid_t); //ROI
-    ProcessControlBlock* getLateProcess(); //ROI
-    void RemoveLateProcess(const job_id_t); //ROI
+    TimedProcessControlBlock *getLateProcess(); //ROI
+    void RemoveLateProcesses(); //ROI
     const std::string &getLastPwd() const;
     void setLastPwd(const std::string &lastPwd);
     bool sendSignal(signal_t signum, job_id_t jobId);
+    /*
     bool getIsForgroundTimed() const; //ROI
     void setIsForgroundTimed(bool value); //ROI
     bool getHasProcessTimedOut() const; //ROI
     void setHasProcessTimedOut(bool value); //ROI
-
+     */
     JobsManager jobs;
 
 public:
@@ -153,6 +154,8 @@ public:
     bool invalid = false;
     std::string cmd_line;
     bool isBuiltIn = false;
+    bool isTimeOut = false;
+    int waitNumber = 0;
 
 public:
     Command(std::string cmd_line, SmallShell* smash);

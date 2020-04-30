@@ -60,44 +60,25 @@ namespace SignalHandlers {
     }
 
     void alarmHandler(int sig_num) {
-        /*
+
         // do we need to print we got an alarm anyway? - we do
         cout << "smash: got an alarm" << endl;
-        ProcessControlBlock* lateProcess;
-        //in case of foreground process
-        if ((shell->getIsForgroundTimed()) &&
-        (difftime(time(nullptr), shell->getForegroundProcess()->getStartTime()) == shell->getForegroundProcess()->duration)){
-        lateProcess = const_cast<ProcessControlBlock*>(shell->getForegroundProcess());
-        shell->setIsForgroundTimed(false);
-            //send SIGKILL
-            if (kill(lateProcess->getProcessId(), SIGKILL) < 0) {
-                DEBUG_PRINT("alarmhandler kill failed 1");
-                cerr << "smash error: kill failed" << endl;
-                return;
-            }
-            cout << "smash: " << lateProcess->getCreatingCommand() << " timed out!" << endl;
-            return;
-        }
-
-
-        //find command that cause alarm
-        else lateProcess = shell->getLateProcess();
+        TimedProcessControlBlock *lateProcess = shell->getLateProcess();
 
         //send SIGKILL
-        if (lateProcess) {
-            if ((kill(lateProcess->getProcessId(), SIGKILL) < 0) && (shell->getHasProcessTimedOut())) {
+        // i marked built-in command with " " as their command line
+        if (lateProcess || lateProcess->getCreatingCommand() != " ") {
+            if (kill(lateProcess->getProcessId(), SIGKILL) < 0) {
                 cerr << "smash error: kill failed" << endl;
-                shell->setHasProcessTimedOut(false);
                 return;
             }
-
             cout << "smash: " << lateProcess->getCreatingCommand() << " timed out!" << endl;
-            // general remove from job list
-            //shell->jobs.removeJobById(lateProcess->getJobId());
-            shell->RemoveLateProcess(lateProcess->getJobId());
         }
-         */
-    }
+            // general remove from job list
+            shell->RemoveLateProcesses();
+            //set signal alarm for next process in the list
+            shell->jobs.setAlarmSignal();
+        }
 }
 
     int main(int argc, char *argv[]) {
