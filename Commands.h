@@ -23,7 +23,7 @@ typedef unsigned int signal_t;
 class Command;
 class SmallShell;
 
-//bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCodeReturned=nullptr);
+bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCodeReturned=nullptr);
 
 using std::string;
 using std::unique_ptr;
@@ -56,7 +56,6 @@ private:
 public:
     JobsManager(SmallShell& smash);
     ~JobsManager() = default;
-    // ROI
     void addJob(const Command& cmd, pid_t pid);
     void addJob(const ProcessControlBlock& pcb);
     void printJobsList();
@@ -74,6 +73,7 @@ public:
 
 //ROI
 // note that -2 in pid and jid implies a builtin command
+//AKIVA: why not just use isBuiltIn field of Command class?
     void addTimedProcess(const job_id_t jobId,
                                       const pid_t processId,
                                       const std::string& creatingCommand, int futureSeconds);

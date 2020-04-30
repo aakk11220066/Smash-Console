@@ -58,6 +58,8 @@ public:
                         const pid_t processId,
                         const std::string &creatingCommand);
 
+    pid_t getProcessGroupId() const;
+
     // ROI - added default to avoid error in build
     virtual ~ProcessControlBlock() = default;
 };
@@ -86,8 +88,6 @@ public:
     bool operator==(const TimedProcessControlBlock &rhs) const;
 
     bool operator!=(const TimedProcessControlBlock &rhs) const;
-
-    pid_t getProcessGroupId() const;
 
     virtual ~TimedProcessControlBlock() = default;
 };

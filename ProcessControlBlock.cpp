@@ -16,18 +16,15 @@ ProcessControlBlock::ProcessControlBlock(const job_id_t jobId,
 
     jobId(jobId),
     processId(processId),
-    //ROI greyed out to avoid error
-    //processGroupId(processId),
+    processGroupId(processId),
     creatingCommand(creatingCommand),
     startTime(time(nullptr))
     {}
 
-//ROI - greyed your part to avoid errors
-/*
+
 pid_t ProcessControlBlock::getProcessGroupId() const {
     return processGroupId;
 }
- */
 
 const job_id_t ProcessControlBlock::getJobId() const {
     return jobId;
@@ -145,6 +142,5 @@ bool TimedProcessControlBlock::operator<=(const TimedProcessControlBlock &rhs) c
 bool TimedProcessControlBlock::operator>=(const TimedProcessControlBlock &rhs) const {
     return !(*this < rhs);
 }
-
 
 

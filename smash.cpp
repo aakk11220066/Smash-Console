@@ -60,6 +60,7 @@ namespace SignalHandlers {
         //send SIGKILL
         // i marked built-in command with " " as their command line
         if (lateProcess && lateProcess->getCreatingCommand() != " ") {
+            //AKIVA: use ::sendSignal instead of kill to send actionable signals
             try{
                 ::sendSignal(*lateProcess, SIGKILL);
             } catch (SmashExceptions::SyscallException& error){

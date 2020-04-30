@@ -36,13 +36,13 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 /// \param sig_num signal number to send
 /// \param errCodeReturned where to return error code to [optional]
 /// \return true if succeeded, false if failed to send signal
-/*
+
 bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCodeReturned) {
     bool result = (killpg(pcb.getProcessGroupId(), sig_num) >= 0);
     if (errCodeReturned) *errCodeReturned = errno;
     return result;
 }
- */
+
 
 template<>
 ProcessControlBlock* Heap<ProcessControlBlock*>::getMax() {
@@ -261,9 +261,7 @@ void SmallShell::setForegroundProcess(const ProcessControlBlock *foregroundProce
 
 SmallShell::~SmallShell() {
     if (foregroundProcess) {
-        /*
         if (!::sendSignal(*foregroundProcess, SIGKILL)) std::cerr << "smash error: kill failed" << endl;
-         */
     }
     executeCommand("quit");
 }
@@ -536,13 +534,13 @@ void KillCommand::execute() {
     if (nullptr == pcbPtr) {
         throw SmashExceptions::Exception("kill", "job-id " + to_string(jobId) + " does not exist");
     }
-/*
+
     bool signalSendStatus = ::sendSignal(*pcbPtr, signum);
     if (!signalSendStatus) {
         if (!verbose) throw SmashExceptions::SignalSendException();
         throw SmashExceptions::SyscallException("kill");
     }
-*/
+
     //if this is wait/continue signal, update JobsManager as well
     bool stopSignal = (signum==SIGSTOP || signum==SIGTSTP || signum==SIGTTIN || signum==SIGTTOU);
     bool contSignal = (signum==SIGCONT);
@@ -584,7 +582,7 @@ void ForegroundCommand::execute() {
     smash->setForegroundProcess(nullptr);
 
     // ROI - loop to remove timed process in case it ended before the timeout
-    if (!smash->jobs.timed_processes.size() < 1) {
+    if (!(smash->jobs.timed_processes.size() < 1)) {
 
         for (TimedProcessControlBlock &timed_pcb: smash->jobs.timed_processes) {
             if (jobId == timed_pcb.getJobId()) {
@@ -726,7 +724,7 @@ void PipeCommand::commandFromNonBuiltinExecution() {
     if (!pidFrom) {
         *processGroupFromPtr = smash->escapeSmashProcessGroup();
         if (signal(SIGCONT, SIG_DFL) == SIG_ERR) throw SmashExceptions::SyscallException("signal");
-        DEBUG_PRINT("process "<<getppid()<<" forked a son for pipe commandFrom "<<commandFrom->cmd_line<<" with pid="<<getpid());
+        //DEBUG_PRINT("process "<<getppid()<<" forked a son for pipe commandFrom "<<commandFrom->cmd_line<<" with pid="<<getpid());
         //close pipe read side
         if (close(pipeSides[0])) throw SmashExceptions::SyscallException("close");
         //replace stdout with pipe write side
@@ -777,7 +775,7 @@ void PipeCommand::commandToExecution() {
     if (!pidTo) {
         *processGroupToPtr = smash->escapeSmashProcessGroup();
         if (signal(SIGCONT, SIG_DFL) == SIG_ERR) throw SmashExceptions::SyscallException("signal");
-        DEBUG_PRINT("process "<<getppid()<<" forked a son for pipe commandTo "<<commandTo->cmd_line<<" with pid="<<getpid());
+        //DEBUG_PRINT("process "<<getppid()<<" forked a son for pipe commandTo "<<commandTo->cmd_line<<" with pid="<<getpid());
         //close pipe write side
         if (close(pipeSides[1])) throw SmashExceptions::SyscallException("close");
         //replace stdin with pipe read side
@@ -1034,7 +1032,6 @@ void TimeoutCommand::execute() {
 ExternalCommand::ExternalCommand(string cmd_line, SmallShell *smash) : BackgroundableCommand(cmd_line, smash) {}
 
 void ExternalCommand::executeBackgroundable() {
-    DEBUG_PRINT("executing externalcommand "<<cmd_line);
     execl("/bin/bash", "/bin/bash", "-c", _removeBackgroundSign(cmd_line).c_str(), NULL);
 }
 
