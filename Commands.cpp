@@ -145,8 +145,9 @@ std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
     string opcode = cmd_s.substr(0, cmd_s.find_first_of(WHITESPACE));
 
     //Special commands
-    if (cmd_s.find('|') != string::npos) return std::unique_ptr<Command>(new PipeCommand(cmd_line, this));
-    else if (cmd_s.find('>') != string::npos)
+    if ((cmd_s.find('|') != string::npos) && (("chprompt") != opcode))
+        return std::unique_ptr<Command>(new PipeCommand(cmd_line, this));
+    else if ((cmd_s.find('>') != string::npos) && (("chprompt") != opcode))
         return std::unique_ptr<Command>(new RedirectionCommand(cmd_line, this));
     else if (("cp") == opcode) return std::unique_ptr<Command>(new CopyCommand(cmd_line, this));
     else if (("timeout") == opcode) return std::unique_ptr<Command>(new TimeoutCommand(cmd_line, this)); //DEBUG
