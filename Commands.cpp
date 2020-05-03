@@ -482,7 +482,7 @@ void JobsManager::killAllJobs() {
     for (pair<job_id_t, ProcessControlBlock> pcbPair : processes) {
         cout << pcbPair.second << endl;
         bool signalStatus = smash.sendSignal(SIGKILL, pcbPair.first);
-        assert (signalStatus >= 0);
+        assert (signalStatus);
     }
     // ROI erase also all timed processes
     smash.jobs.timed_processes.clear();
@@ -698,7 +698,7 @@ void BackgroundableCommand::execute() {
 
 
 PipeCommand::PipeCommand(std::string cmd_line, SmallShell *smash) : BackgroundableCommand(cmd_line, smash) {
-    unsigned short pipeIndex = cmd_line.find_first_of('|');
+    unsigned int pipeIndex = cmd_line.find_first_of('|');
     //sanitize inputs
     if (!(cmd_line.size() > pipeIndex + 1)) throw SmashExceptions::InvalidArgumentsException("pipe");
 

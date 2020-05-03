@@ -17,6 +17,8 @@
 #define HISTORY_MAX_RECORDS (50)
 #define DEBUG_PRINT(err_msg) std::cerr << "DEBUG: " << err_msg << std::endl
 
+typedef int errno_t;
+
 typedef unsigned int job_id_t;
 typedef unsigned int signal_t;
 
@@ -416,7 +418,7 @@ public:
 class SmashExceptions::FileOpenException : public SmashExceptions::Exception{
 public:
     FileOpenException() : Exception("",""){};
-} __unused;
+} ;
 class SmashExceptions::InvalidArgumentsException : public SmashExceptions::Exception{
 public:
     InvalidArgumentsException(const string& sender) : SmashExceptions::Exception(sender, "invalid arguments"){}
