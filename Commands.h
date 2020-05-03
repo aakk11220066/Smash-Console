@@ -15,7 +15,7 @@
 #define COMMAND_ARGS_MAX_LENGTH (200)
 #define COMMAND_MAX_ARGS (20)
 #define HISTORY_MAX_RECORDS (50)
-#define DEBUG_PRINT(err_msg) std::cerr << "DEBUG: " << err_msg << std::endl
+#define DEBUG_PRINT(err_msg) /*std::cerr << "DEBUG: " << err_msg << std::endl*/
 
 typedef int errno_t;
 
@@ -397,12 +397,13 @@ public:
 
 protected:
     std::string errMsg;
+    std::string whatMsg;
 public:
     explicit Exception(const std::string& sender, const std::string& errMsg) : sender(sender),
-        errMsg(errMsg){}
+        errMsg(errMsg), whatMsg("smash error: "+sender+": "+errMsg){}
 
     const char* what() const noexcept override{
-        const char* result = ("smash error: "+sender+": "+errMsg).c_str();
+        const char* result = whatMsg.c_str();
         return result;
     }
 };

@@ -5,7 +5,7 @@
 #include <signal.h>
 #include "Commands.h"
 
-#define DEBUG_PRINT(err_msg) cerr << "DEBUG: " << err_msg //debug
+#define DEBUG_PRINT(err_msg) /*cerr << "DEBUG: " << err_msg */
 
 using namespace std;
 

@@ -28,7 +28,7 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 #define FUNC_EXIT()
 #endif
 
-#define DEBUG_PRINT(err_msg) cerr << "DEBUG: " << err_msg << endl
+#define DEBUG_PRINT(err_msg) /*cerr << "DEBUG: " << err_msg << endl*/
 #define DIGITS "1234567890"
 #define BuiltInID -2
 

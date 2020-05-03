@@ -8,7 +8,7 @@
 #include <cstring>
 #include <unistd.h>
 
-#define DEBUG_PRINT(err_msg) std::cerr << "DEBUG: " << err_msg << std::endl //debug
+#define DEBUG_PRINT(err_msg) /*std::cerr << "DEBUG: " << err_msg << std::endl */
 
 ProcessControlBlock::ProcessControlBlock(const job_id_t jobId,
     const pid_t processId,
