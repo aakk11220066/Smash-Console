@@ -31,6 +31,8 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 #define DEBUG_PRINT(err_msg) /*cerr << "DEBUG: " << err_msg << endl*/
 #define DIGITS "1234567890"
 #define BuiltInID -2
+const job_id_t UNINITIALIZED_JOB_ID=-1;
+const job_id_t FG_JOB_ID = 0;
 
 /// USE THIS WHEN SENDING ORDERS TO PROCESSES THAT SHOULD AFFECT PROCESS'S CHILDREN!
 /// \param pcb process control block representing process to send signal to
@@ -144,7 +146,7 @@ SmallShell::SmallShell() : smashProcessGroup(getpgrp()), smashPid(getpid()), job
 */
 std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
     string cmd_s = _trim(string(cmd_line));
-    string opcode = cmd_s.substr(0, cmd_s.find_first_of(WHITESPACE));
+    string opcode = _trim(_removeBackgroundSign(cmd_s.substr(0, cmd_s.find_first_of(WHITESPACE))));
 
     //Special commands
     if ((cmd_s.find('|') != string::npos) && (("chprompt") != opcode))
@@ -478,9 +480,9 @@ ProcessControlBlock *JobsManager::getLastStoppedJob() {
 }
 
 void JobsManager::killAllJobs() {
-    cout << "smash: sending SIGKILL to " << processes.size() << " jobs:" << endl;
+    cout << "smash: sending SIGKILL signal to " << processes.size() << " jobs:" << endl;
     for (pair<job_id_t, ProcessControlBlock> pcbPair : processes) {
-        cout << pcbPair.second << endl;
+        cout << pcbPair.second.getProcessId() << ": " << pcbPair.second.getCreatingCommand() << endl;
         bool signalStatus = smash.sendSignal(SIGKILL, pcbPair.first);
         assert (signalStatus);
     }
@@ -489,7 +491,7 @@ void JobsManager::killAllJobs() {
 }
 
 void JobsManager::addJob(const Command &cmd, pid_t pid) {
-    addJob(ProcessControlBlock(maxIndex, pid, cmd.cmd_line));
+    addJob(ProcessControlBlock(UNINITIALIZED_JOB_ID, pid, cmd.cmd_line));
 }
 
 void JobsManager::addJob(const ProcessControlBlock &pcb) {
@@ -498,9 +500,11 @@ void JobsManager::addJob(const ProcessControlBlock &pcb) {
     resetMaxIndex();
     const_cast<ProcessControlBlock &>(pcb).resetStartTime();
 
-    const_cast<ProcessControlBlock &>(pcb).setJobId(++maxIndex);
+    job_id_t newJobId = pcb.getJobId();
+    if (newJobId == UNINITIALIZED_JOB_ID || newJobId==FG_JOB_ID) newJobId = ++maxIndex;
+    const_cast<ProcessControlBlock &>(pcb).setJobId(newJobId);
     processes.insert(pair<job_id_t,
-            ProcessControlBlock>(maxIndex, pcb));
+            ProcessControlBlock>(newJobId, pcb));
 
     //if process is stopped, handle it as such
     if (!pcb.isRunning()) {
@@ -509,6 +513,7 @@ void JobsManager::addJob(const ProcessControlBlock &pcb) {
 }
 
 job_id_t JobsManager::resetMaxIndex() {
+    maxIndex += 2; //for safety
     while (maxIndex > 0 && !getJobById(maxIndex)) {
         --maxIndex;
     }
@@ -536,6 +541,7 @@ KillCommand::KillCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cm
         if ((args.size() - 1 != 2) || (args[1][0] != '-')) throw std::invalid_argument("Bad args");
         signum = -stoi(args[1]);
         jobId = stoi(args[2]);
+        if (signum>31) throw SmashExceptions::InvalidArgumentsException("kill");
     } catch (std::invalid_argument e) {
         throw SmashExceptions::InvalidArgumentsException("kill");
     }
@@ -570,7 +576,7 @@ ForegroundCommand::ForegroundCommand(string cmd_line, SmallShell *smash) : Built
     try {
         if (args.size() - 1 > 1) throw std::invalid_argument("Too many args");
         if (args.size() - 1 != 0) jobId = stoi(args[1]);
-    } catch (std::invalid_argument e) {
+    } catch (std::invalid_argument& e) {
         throw SmashExceptions::InvalidArgumentsException("fg");
     }
     if (args.size() - 1 == 0) {
@@ -637,6 +643,7 @@ BackgroundCommand::BackgroundCommand(string cmd_line, SmallShell *smash) : Built
 }
 
 void BackgroundCommand::execute() {
+    cout << *(smash->jobs.getJobById(jobId)) << endl;
     smash->jobs.unpauseJob(jobId);
 }
 
@@ -667,7 +674,7 @@ void BackgroundableCommand::execute() {
     } else {
         //if !backgroundRequest then wait for son, inform smash that a foreground program is running
         if (!backgroundRequest) {
-            const job_id_t FG_JOB_ID = 0;
+
             ProcessControlBlock foregroundPcb = ProcessControlBlock(FG_JOB_ID, pid, cmd_line);
             smash->setForegroundProcess(&foregroundPcb);
 
