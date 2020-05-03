@@ -219,7 +219,7 @@ void SmallShell::executeCommand(string cmd_line) {
         fflush(stderr);
     }
     catch (SmashExceptions::Exception &error) {
-        cerr << error.what() << endl; //TODO: figure out how exceptions are to be printed
+        cerr << error.what() << endl;
         cerr.flush();
     }
 }
@@ -741,7 +741,7 @@ void PipeCommand::commandFromNonBuiltinExecution() {
         //replace stdout with pipe write side
         if (dup2(pipeSides[1], errPipe ? STDERR_FILENO : STDOUT_FILENO) < 0)
             throw SmashExceptions::SyscallException("dup2");
-        //execute commandFrom //TODO: test if command is showpid, needs to print original smash pid
+        //execute commandFrom
         commandFrom->execute();
         exit(0);
     }
