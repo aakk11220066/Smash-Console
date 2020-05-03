@@ -1,9 +1,9 @@
 SUBMITTERS := 324384718_311342554
 COMPILER := g++
 COMPILER_FLAGS := --std=c++11 -Wall
-SRCS := ProcessControlBlock.cpp Commands.cpp signals.cpp smash.cpp
+SRCS := ProcessControlBlock.cpp Commands.cpp smash.cpp
 OBJS=$(subst .cpp,.o,$(SRCS))
-HDRS := ProcessControlBlock.h Commands.h signals.h
+HDRS := ProcessControlBlock.h Commands.h
 TESTS_INPUTS := $(wildcard test_input*.txt)
 TESTS_OUTPUTS := $(subst input,output,$(TESTS_INPUTS))
 SMASH_BIN := smash

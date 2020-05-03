@@ -390,14 +390,14 @@ namespace SmashExceptions{
 }
 
 class SmashExceptions::Exception : public std::exception{
-private:
+public:
     std::string sender;
 
 protected:
     std::string errMsg;
 public:
-    explicit Exception(const std::string& sender, const std::string& errMsg) : errMsg(errMsg),
-                                                                               sender(sender){}
+    explicit Exception(const std::string& sender, const std::string& errMsg) : sender(sender),
+        errMsg(errMsg){}
 
     const char* what() const noexcept override{
         const char* result = ("smash error: "+sender+": "+errMsg).c_str();
@@ -416,7 +416,7 @@ public:
 class SmashExceptions::FileOpenException : public SmashExceptions::Exception{
 public:
     FileOpenException() : Exception("",""){};
-};
+} __unused;
 class SmashExceptions::InvalidArgumentsException : public SmashExceptions::Exception{
 public:
     InvalidArgumentsException(const string& sender) : SmashExceptions::Exception(sender, "invalid arguments"){}

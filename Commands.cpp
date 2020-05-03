@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <limits.h>
 #include <type_traits>
+#include <stdio.h>
 #include "Commands.h"
 
 using namespace std;
@@ -117,8 +118,9 @@ bool _isBackgroundComamnd(basic_string<char, char_traits<char>, allocator<char>>
 string _removeBackgroundSign(string cmd_line) {
     const string str(cmd_line);
     // find last character other than spaces
-    unsigned int idx = str.find_last_not_of(WHITESPACE);
+    size_t idx = str.find_last_not_of(WHITESPACE);
     // if all characters are spaces then return
+    //if (cmd_line == "" || idx == string::npos) {
     if (cmd_line == "" || idx == string::npos) {
         return cmd_line;
     }
@@ -135,7 +137,7 @@ string _removeBackgroundSign(string cmd_line) {
 
 
 
-SmallShell::SmallShell() : smashPid(getpid()), smashProcessGroup(getpgrp()), jobs(*this) {}
+SmallShell::SmallShell() : smashProcessGroup(getpgrp()), smashPid(getpid()), jobs(*this) {}
 
 /**
 * Creates and returns a pointer to Command class which matches the given command line (cmd_line)
@@ -177,7 +179,9 @@ TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
             if (pid == BuiltInID) return &timed_pcb;
 
             // in case background command already finished
-            int waitPidStatus = waitpid(timed_pcb.getProcessId(), nullptr, WNOHANG);
+            if (waitpid(timed_pcb.getProcessId(), nullptr, WNOHANG)<0) {
+                throw SmashExceptions::SyscallException("waitpid");
+            }
             int killStatus = kill(pid, 0);
             if (killStatus < 0 && errno == ESRCH) {
                 return nullptr;
@@ -210,8 +214,13 @@ void SmallShell::executeCommand(string cmd_line) {
         if (!cmd || !cmd->invalid) cmd->execute();
     }
     catch (SmashExceptions::SameFileException& e) {}
+    catch (SmashExceptions::SyscallException& error){
+        std::perror(error.what());
+        fflush(stderr);
+    }
     catch (SmashExceptions::Exception &error) {
-        cerr << error.what() << endl;
+        cerr << error.what() << endl; //TODO: figure out how exceptions are to be printed
+        cerr.flush();
     }
 }
 
