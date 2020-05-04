@@ -104,6 +104,7 @@ private:
     const ProcessControlBlock* foregroundProcess = nullptr;
 
     const pid_t smashProcessGroup;
+
 public:
     const ProcessControlBlock *getForegroundProcess() const;
     ProcessControlBlock *getForegroundProcess1() const;
@@ -115,6 +116,10 @@ public:
     /// change process group to a different one from that of the smash
     /// \return new process group
     signal_t escapeSmashProcessGroup();
+
+    unique_ptr<Command> containedBuild(const string &cmd_line);
+    bool containedExecute(const unique_ptr<Command> &cmd);
+
 public:
     void RemoveLateProcess(const pid_t); //ROI
     TimedProcessControlBlock *getLateProcess(); //ROI
@@ -160,7 +165,6 @@ protected:
 
 public:
     bool verbose = true;
-    bool invalid = false;
     std::string cmd_line;
     bool isBuiltIn = false;
     bool isTimeOut = false;
@@ -210,7 +214,9 @@ private:
     pid_t processGroupTo = processGroupFrom;
     pid_t *processGroupToPtr=&processGroupTo, *processGroupFromPtr=&processGroupFrom;
     int pipeSides[2] = {0,0};
+    string cmd_lineFrom="", cmd_lineTo="";
 
+    bool buildAndRunBuiltinRedirectionCommand();
     void commandFromBuiltinExecution();
     void commandFromNonBuiltinExecution();
     void commandFromExecution();
@@ -219,7 +225,6 @@ private:
 protected:
     unique_ptr<Command> commandFrom= nullptr, commandTo=nullptr;
 
-    bool isRedirectionCommand = false;
 public:
     PipeCommand(std::string cmd_line, SmallShell* smash);
     PipeCommand(unique_ptr<Command> commandFrom, unique_ptr<Command> commandTo, SmallShell *smash);

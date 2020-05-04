@@ -28,7 +28,7 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 #define FUNC_EXIT()
 #endif
 
-//debug
+
 
 #ifndef NDEBUG
 #define DEBUG_PRINT(err_msg) cerr << "DEBUG: " << err_msg << endl
@@ -51,11 +51,45 @@ const int NO_OPTIONS = 0;
 
 bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCodeReturned) {
     bool result = (killpg(pcb.getProcessGroupId(), sig_num) >= 0);
-    DEBUG_PRINT("sendSignal sending signal "<<sig_num<<" to process "<<pcb.getCreatingCommand());
     if (errCodeReturned) *errCodeReturned = errno;
     return result;
 }
 
+
+std::unique_ptr<Command> SmallShell::containedBuild(const string &cmd_line){
+    unique_ptr<Command> result;
+    try {
+        return std::move(this->CreateCommand(cmd_line));
+    }
+    catch (SmashExceptions::SameFileException& e) {}
+    catch (SmashExceptions::SyscallException& error){
+        std::perror(error.what());
+        fflush(stderr);
+    }
+    catch (SmashExceptions::Exception &error) {
+        cerr << error.what() << endl;
+        cerr.flush();
+    }
+    return nullptr;
+}
+bool SmallShell::containedExecute(const unique_ptr<Command> &cmd) {
+    try {
+        if (cmd) {
+            cmd->execute();
+            return true;
+        }
+    }
+    catch (SmashExceptions::SameFileException& e) {}
+    catch (SmashExceptions::SyscallException& error){
+        std::perror(error.what());
+        fflush(stderr);
+    }
+    catch (SmashExceptions::Exception &error) {
+        cerr << error.what() << endl;
+        cerr.flush();
+    }
+    return false;
+}
 
 template<>
 ProcessControlBlock* Heap<ProcessControlBlock*>::getMax() {
@@ -235,19 +269,11 @@ void SmallShell::RemoveLateProcesses() {
 
 
 void SmallShell::executeCommand(string cmd_line) {
-    try {
-        std::unique_ptr<Command> cmd = this->CreateCommand(cmd_line);
-        if (!cmd || !cmd->invalid) cmd->execute();
-    }
-    catch (SmashExceptions::SameFileException& e) {}
-    catch (SmashExceptions::SyscallException& error){
-        std::perror(error.what());
-        fflush(stderr);
-    }
-    catch (SmashExceptions::Exception &error) {
-        cerr << error.what() << endl;
-        cerr.flush();
-    }
+    containedExecute(containedBuild(cmd_line));
+
+    //shouldn't be necessary (control should never reach here by non-smash functions, but just in case)
+    bool isSmashProcess = (getpid()==smashPid);
+    if (!isSmashProcess) exit(0); //only smash may continue operation, not processes that escaped via exception throw
 }
 
 const string &SmallShell::getSmashPrompt() const {
@@ -273,12 +299,12 @@ bool SmallShell::sendSignal(signal_t signum, job_id_t jobId) {
     string killCmdText = string("kill -") + std::to_string(signum) + " " + std::to_string(jobId);
     std::unique_ptr<KillCommand> killCmd = std::unique_ptr<KillCommand>(new KillCommand(killCmdText, this));
     killCmd->verbose = false;
-    if (!killCmd->invalid) {
-        try {
-            killCmd->execute();
-        } catch (SmashExceptions::SignalSendException e) {
-            return false;
-        }
+    assert(killCmd);
+
+    try {
+        killCmd->execute();
+    } catch (SmashExceptions::SignalSendException e) {
+        return false;
     }
     return true;
 }
@@ -624,8 +650,7 @@ void ForegroundCommand::execute() {
 
     smash->setForegroundProcess(&reservePcb);
     smash->jobs.removeJobById(jobId);
-    int jobData=0;//debug
-    const int waitStatus = waitpid(pid, &jobData, WUNTRACED);
+    const int waitStatus = waitpid(pid, nullptr, WUNTRACED);
     if (waitStatus < 0) throw SmashExceptions::SyscallException("waitpid");
     smash->setForegroundProcess(nullptr);
 
@@ -744,18 +769,13 @@ PipeCommand::PipeCommand(std::string cmd_line, SmallShell *smash) : Backgroundab
 
     if (cmd_line[pipeIndex + 1] == '&') errPipe = true;
 
-    const string cmd_lineFrom = _removeBackgroundSign(cmd_line.substr(0, pipeIndex));
-    const string cmd_lineTo = _removeBackgroundSign(cmd_line.substr(pipeIndex + 1 + (errPipe ? 1 : 0)));
+    cmd_lineFrom = _removeBackgroundSign(cmd_line.substr(0, pipeIndex));
+    cmd_lineTo = _removeBackgroundSign(cmd_line.substr(pipeIndex + 1 + (errPipe ? 1 : 0)));
 
-    /*bool backgroundCommand = _isBackgroundComamnd(cmd_line);
-
-    commandFrom = smash->CreateCommand(cmd_lineFrom + (backgroundCommand? "&" : ""));
-    commandTo = smash->CreateCommand(cmd_lineTo + (backgroundCommand? "&" : ""));*/
-
-    commandFrom = smash->CreateCommand(cmd_lineFrom);
+    if (!isRedirectionBuiltinForegroundCommand){
+        commandFrom = smash->CreateCommand(cmd_lineFrom);
+    }
     commandTo = smash->CreateCommand(cmd_lineTo);
-    assert(commandTo && commandFrom);
-    invalid = commandFrom->invalid && commandTo->invalid;
 
     //create pipe
     if (pipe(pipeSides)<0) throw SmashExceptions::SyscallException("pipe");
@@ -783,16 +803,21 @@ void PipeCommand::commandFromNonBuiltinExecution() {
         if (dup2(pipeSides[1], errPipe ? STDERR_FILENO : STDOUT_FILENO) < 0)
             throw SmashExceptions::SyscallException("dup2");
         //execute commandFrom
-        commandFrom->execute();
+        smash->containedExecute(commandFrom);
         exit(0);
     }
+}
+
+
+bool PipeCommand::buildAndRunBuiltinRedirectionCommand() {
+    smash->containedExecute(commandFrom = smash->containedBuild(cmd_lineFrom));
+    return commandFrom!=nullptr;
 }
 
 void PipeCommand::commandFromBuiltinExecution() {
     typedef int fd_number_t;
     fd_number_t outputAddress = errPipe ? STDERR_FILENO : STDOUT_FILENO;
 
-    DEBUG_PRINT("errPipe"<<((errPipe==STDERR_FILENO)? "=" : "!")<<"=STDERR_FILENO");
     //duplicate stdout/stderr
     fd_number_t stdoutCopy = dup(outputAddress);
 
@@ -800,18 +825,12 @@ void PipeCommand::commandFromBuiltinExecution() {
     if (dup2(pipeSides[1], outputAddress) < 0)
         throw SmashExceptions::SyscallException("dup2");
 
-    DEBUG_PRINT("this was written to stderr during redirection");
-    cout<<"this was written to stdout during redirection"<<endl; //debug
-    //execute commandFrom
-    commandFrom->execute();
+    buildAndRunBuiltinRedirectionCommand();
 
     //restore stdout/err
     if (dup2(stdoutCopy, outputAddress)<0) throw SmashExceptions::SyscallException("dup2");
     //close duplicate
     if (close(stdoutCopy)<0) throw SmashExceptions::SyscallException("close");
-
-    DEBUG_PRINT("this was written to stderr after restore");
-    cout<<"this was written to stdout after restore"<<endl; //debug
 
     //run commandFrom fork (pointless, for structure)
     if ((pidFrom = fork()) < 0) throw SmashExceptions::SyscallException("fork");
@@ -824,7 +843,7 @@ void PipeCommand::commandFromBuiltinExecution() {
 }
 
 void PipeCommand::commandFromExecution() {
-    if (!(commandFrom->isBuiltIn) || !isRedirectionCommand) commandFromNonBuiltinExecution();
+    if (!isRedirectionBuiltinForegroundCommand) commandFromNonBuiltinExecution();
     else commandFromBuiltinExecution();
 }
 
@@ -840,7 +859,7 @@ void PipeCommand::commandToExecution() {
         //replace stdin with pipe read side
         if (dup2(pipeSides[0], STDIN_FILENO) < 0) throw SmashExceptions::SyscallException("dup2");
         //execute commandTo
-        commandTo->execute();
+        smash->containedExecute(commandTo);
         exit(0);
     }
 }
@@ -891,10 +910,7 @@ unsigned short indicator(bool condition) {
 
 RedirectionCommand::RedirectionCommand(unique_ptr<Command> commandFrom, string filename, bool append, SmallShell *smash) :
         PipeCommand(std::move(commandFrom),
-                unique_ptr<Command>(new WriteCommand(filename, append, smash)), smash) {
-
-    isRedirectionCommand = true;
-}
+                unique_ptr<Command>(new WriteCommand(filename, append, smash)), smash) {}
 
 
 #define OPERATOR_POSITION (cmd_line.find_first_of('>'))
