@@ -228,13 +228,16 @@ TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
             if (waitpid(timed_pcb.getProcessId(), nullptr, WNOHANG)<0) {
                 throw SmashExceptions::SyscallException("waitpid");
             }
+            /*
             int killStatus = kill(pid, 0);
             if (killStatus < 0 && errno == ESRCH) {
                 return nullptr;
                 }
-            }
-        //background command un-finished
+            */
+            if (!::sendSignal(timed_pcb, SIGKILL)) return nullptr;
+            //background command un-finished
             return &timed_pcb;
+            }
         }
     return nullptr;
 }
