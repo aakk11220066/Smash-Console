@@ -31,7 +31,8 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 #define DEBUG_PRINT(err_msg) /*cerr << "DEBUG: " << err_msg << endl*/
 #define DIGITS "1234567890"
 #define BuiltInID -2
-#define BuiltInCMD "builtInID"
+const job_id_t UNINITIALIZED_JOB_ID=-1;
+const job_id_t FG_JOB_ID = 0;
 
 /// USE THIS WHEN SENDING ORDERS TO PROCESSES THAT SHOULD AFFECT PROCESS'S CHILDREN!
 /// \param pcb process control block representing process to send signal to
@@ -145,7 +146,7 @@ SmallShell::SmallShell() : smashProcessGroup(getpgrp()), smashPid(getpid()), job
 */
 std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
     string cmd_s = _trim(string(cmd_line));
-    string opcode = cmd_s.substr(0, cmd_s.find_first_of(WHITESPACE));
+    string opcode = _trim(_removeBackgroundSign(cmd_s.substr(0, cmd_s.find_first_of(WHITESPACE))));
 
     //Special commands
     if ((cmd_s.find('|') != string::npos) && (("chprompt") != opcode))
@@ -198,29 +199,15 @@ TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
 void SmallShell::RemoveLateProcesses() {
     //remove from list all jobs who have just expired
     for (TimedProcessControlBlock timed_pcb: jobs.timed_processes) {
-        cout << "hi there" << endl;
-        if (difftime(time(nullptr), timed_pcb.getAbortTime()) == 0) {
-            if (timed_pcb.getJobId() != BuiltInID) jobs.removeJobById(timed_pcb.getJobId());
-            std::list<TimedProcessControlBlock>::iterator position =
-                    find(jobs.timed_processes.begin(), jobs.timed_processes.end(), timed_pcb);
-            //if (position != this->end()) std::vector<T>::erase(position);
-            //PROBLEMATIC
-            jobs.timed_processes.erase(position);
-            return;
-        }
-    }
-        /*
         //cout << pid << endl << pcb->getProcessId() << endl;
         if (difftime(time(nullptr), timed_pcb.getAbortTime()) == 0) {
             jobs.timed_processes.remove(timed_pcb);
             // erase from map
             jobs.removeJobById(timed_pcb.getJobId());
-            continue;
         }
-         */
-    //}
+    }
     //sort list after deletion for the next alarm signal
-    //jobs.timed_processes.sort();
+    jobs.timed_processes.sort();
 }
 
 
@@ -493,9 +480,9 @@ ProcessControlBlock *JobsManager::getLastStoppedJob() {
 }
 
 void JobsManager::killAllJobs() {
-    cout << "smash: sending SIGKILL to " << processes.size() << " jobs:" << endl;
+    cout << "smash: sending SIGKILL signal to " << processes.size() << " jobs:" << endl;
     for (pair<job_id_t, ProcessControlBlock> pcbPair : processes) {
-        cout << pcbPair.second << endl;
+        cout << pcbPair.second.getProcessId() << ": " << pcbPair.second.getCreatingCommand() << endl;
         bool signalStatus = smash.sendSignal(SIGKILL, pcbPair.first);
         assert (signalStatus);
     }
@@ -504,7 +491,7 @@ void JobsManager::killAllJobs() {
 }
 
 void JobsManager::addJob(const Command &cmd, pid_t pid) {
-    addJob(ProcessControlBlock(maxIndex, pid, cmd.cmd_line));
+    addJob(ProcessControlBlock(UNINITIALIZED_JOB_ID, pid, cmd.cmd_line));
 }
 
 void JobsManager::addJob(const ProcessControlBlock &pcb) {
@@ -513,9 +500,11 @@ void JobsManager::addJob(const ProcessControlBlock &pcb) {
     resetMaxIndex();
     const_cast<ProcessControlBlock &>(pcb).resetStartTime();
 
-    const_cast<ProcessControlBlock &>(pcb).setJobId(++maxIndex);
+    job_id_t newJobId = pcb.getJobId();
+    if (newJobId == UNINITIALIZED_JOB_ID || newJobId==FG_JOB_ID) newJobId = ++maxIndex;
+    const_cast<ProcessControlBlock &>(pcb).setJobId(newJobId);
     processes.insert(pair<job_id_t,
-            ProcessControlBlock>(maxIndex, pcb));
+            ProcessControlBlock>(newJobId, pcb));
 
     //if process is stopped, handle it as such
     if (!pcb.isRunning()) {
@@ -524,6 +513,7 @@ void JobsManager::addJob(const ProcessControlBlock &pcb) {
 }
 
 job_id_t JobsManager::resetMaxIndex() {
+    maxIndex += 2; //for safety
     while (maxIndex > 0 && !getJobById(maxIndex)) {
         --maxIndex;
     }
@@ -539,10 +529,8 @@ void JobsManager::addTimedProcess(const job_id_t jobId,
     timed_processes.sort();
 }
 
-void JobsManager::setAlarmSignal(){
-    if (timed_processes.empty()) return;
+void JobsManager::setAlarmSignal() const{
     assert(!timed_processes.empty());
-    timed_processes.sort();
     int alarmNumber = (int)difftime(timed_processes.begin()->getAbortTime(),time(nullptr));
     assert(alarmNumber > 0);
     alarm(alarmNumber);
@@ -553,6 +541,7 @@ KillCommand::KillCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cm
         if ((args.size() - 1 != 2) || (args[1][0] != '-')) throw std::invalid_argument("Bad args");
         signum = -stoi(args[1]);
         jobId = stoi(args[2]);
+        if (signum>31) throw SmashExceptions::InvalidArgumentsException("kill");
     } catch (std::invalid_argument e) {
         throw SmashExceptions::InvalidArgumentsException("kill");
     }
@@ -587,7 +576,7 @@ ForegroundCommand::ForegroundCommand(string cmd_line, SmallShell *smash) : Built
     try {
         if (args.size() - 1 > 1) throw std::invalid_argument("Too many args");
         if (args.size() - 1 != 0) jobId = stoi(args[1]);
-    } catch (std::invalid_argument e) {
+    } catch (std::invalid_argument& e) {
         throw SmashExceptions::InvalidArgumentsException("fg");
     }
     if (args.size() - 1 == 0) {
@@ -654,6 +643,7 @@ BackgroundCommand::BackgroundCommand(string cmd_line, SmallShell *smash) : Built
 }
 
 void BackgroundCommand::execute() {
+    cout << *(smash->jobs.getJobById(jobId)) << endl;
     smash->jobs.unpauseJob(jobId);
 }
 
@@ -684,7 +674,7 @@ void BackgroundableCommand::execute() {
     } else {
         //if !backgroundRequest then wait for son, inform smash that a foreground program is running
         if (!backgroundRequest) {
-            const job_id_t FG_JOB_ID = 0;
+
             ProcessControlBlock foregroundPcb = ProcessControlBlock(FG_JOB_ID, pid, cmd_line);
             smash->setForegroundProcess(&foregroundPcb);
 
@@ -982,7 +972,7 @@ TimeoutCommand::TimeoutCommand(string cmd_line, SmallShell *smash) : Command(cmd
     inner_cmd_line = trimmed_cmd.substr(trimmed_cmd.find_first_of(str_number) + str_number.length() + 1,
                                         trimmed_cmd.length() + 1);
 
-
+    /*
     //check to avoid timeout loop in command, if it exists i distort it so that CreatingCommand fails regularly, but removing the 1st letter
     string opcode = inner_cmd_line.substr(0, inner_cmd_line.find_first_of(WHITESPACE));
     if (("timeout") == opcode) inner_cmd_line.erase(0, 1);
@@ -991,15 +981,15 @@ TimeoutCommand::TimeoutCommand(string cmd_line, SmallShell *smash) : Command(cmd
         (("quit") == opcode)) {
         isBuiltIn = true;
     }
-     //AKIVA - set BuiltInCommand constructor to set isBuiltIn=true
+    */ //AKIVA - set BuiltInCommand constructor to set isBuiltIn=true
 
     innerCommand = smash->CreateCommand(inner_cmd_line);
     innerCommand->isTimeOut = true;
+    innerCommand->waitNumber = waitNumber;
     //set cmd_line for inner command to include 'timeout' in string
     innerCommand->cmd_line = cmd_line;
     cout << inner_cmd_line << endl; //DEBUG
     waitNumber = stoi(str_number);
-    innerCommand->waitNumber = waitNumber;
 
 }
 
@@ -1008,7 +998,7 @@ void TimeoutCommand::execute() {
     //in case of built-in command
     if (isBuiltIn) {
         innerCommand->execute();
-        smash->jobs.addTimedProcess(BuiltInID, BuiltInID, BuiltInCMD, waitNumber);
+        smash->jobs.addTimedProcess(BuiltInID, BuiltInID, " ", waitNumber);
         smash->jobs.setAlarmSignal();
         return;
     }

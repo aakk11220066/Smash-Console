@@ -9,7 +9,7 @@
 #include <string>
 #include <ostream>
 
-typedef unsigned int job_id_t;
+typedef int job_id_t;
 
 class ProcessControlBlock {
 protected:

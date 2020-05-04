@@ -17,9 +17,10 @@
 #define HISTORY_MAX_RECORDS (50)
 #define DEBUG_PRINT(err_msg) /*std::cerr << "DEBUG: " << err_msg << std::endl*/
 
-typedef int errno_t;
 
-typedef unsigned int job_id_t;
+
+typedef int errno_t;
+typedef int job_id_t;
 typedef unsigned int signal_t;
 
 class Command;
