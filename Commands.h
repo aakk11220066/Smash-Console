@@ -216,14 +216,14 @@ private:
     int pipeSides[2] = {0,0};
     string cmd_lineFrom="", cmd_lineTo="";
 
-    bool buildAndRunBuiltinRedirectionCommand();
+    unique_ptr<Command> buildAndRunCommand(const string &cmd_line, bool exists);
     void commandFromBuiltinExecution();
     void commandFromNonBuiltinExecution();
     void commandFromExecution();
     void commandToExecution();
 
 protected:
-    unique_ptr<Command> commandFrom= nullptr, commandTo=nullptr;
+    unique_ptr<Command> commandFrom=nullptr, commandTo=nullptr;
 
 public:
     PipeCommand(std::string cmd_line, SmallShell* smash);

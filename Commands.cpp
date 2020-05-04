@@ -767,17 +767,14 @@ PipeCommand::PipeCommand(std::string cmd_line, SmallShell *smash) : Backgroundab
     //sanitize inputs
     if (!(cmd_line.size() > pipeIndex + 1)) throw SmashExceptions::InvalidArgumentsException("pipe");
 
+    //check what sort of pipe this is (stdout or stderr channel)
     if (cmd_line[pipeIndex + 1] == '&') errPipe = true;
 
+    //split up command into commandFrom (sending output) and commandTo (input receiver) sections
     cmd_lineFrom = _removeBackgroundSign(cmd_line.substr(0, pipeIndex));
     cmd_lineTo = _removeBackgroundSign(cmd_line.substr(pipeIndex + 1 + (errPipe ? 1 : 0)));
 
-    if (!isRedirectionBuiltinForegroundCommand){
-        commandFrom = smash->CreateCommand(cmd_lineFrom);
-    }
-    commandTo = smash->CreateCommand(cmd_lineTo);
-
-    //create pipe
+    //create pipe to channel output from commandFrom into commandTo
     if (pipe(pipeSides)<0) throw SmashExceptions::SyscallException("pipe");
 }
 
@@ -802,16 +799,11 @@ void PipeCommand::commandFromNonBuiltinExecution() {
         //replace stdout with pipe write side
         if (dup2(pipeSides[1], errPipe ? STDERR_FILENO : STDOUT_FILENO) < 0)
             throw SmashExceptions::SyscallException("dup2");
-        //execute commandFrom
+        //build and execute commandFrom
+        if (!commandFrom) commandFrom = smash->containedBuild(cmd_lineFrom);
         smash->containedExecute(commandFrom);
         exit(0);
     }
-}
-
-
-bool PipeCommand::buildAndRunBuiltinRedirectionCommand() {
-    smash->containedExecute(commandFrom = smash->containedBuild(cmd_lineFrom));
-    return commandFrom!=nullptr;
 }
 
 void PipeCommand::commandFromBuiltinExecution() {
@@ -825,7 +817,9 @@ void PipeCommand::commandFromBuiltinExecution() {
     if (dup2(pipeSides[1], outputAddress) < 0)
         throw SmashExceptions::SyscallException("dup2");
 
-    buildAndRunBuiltinRedirectionCommand();
+    //build and execute commandFrom
+    if (!commandFrom) commandFrom = smash->containedBuild(cmd_lineFrom);
+    smash->containedExecute(commandFrom);
 
     //restore stdout/err
     if (dup2(stdoutCopy, outputAddress)<0) throw SmashExceptions::SyscallException("dup2");
@@ -858,7 +852,8 @@ void PipeCommand::commandToExecution() {
         if (close(pipeSides[1])) throw SmashExceptions::SyscallException("close");
         //replace stdin with pipe read side
         if (dup2(pipeSides[0], STDIN_FILENO) < 0) throw SmashExceptions::SyscallException("dup2");
-        //execute commandTo
+        //build and execute commandTo
+        if (!commandTo) commandTo = smash->containedBuild(cmd_lineTo);
         smash->containedExecute(commandTo);
         exit(0);
     }
