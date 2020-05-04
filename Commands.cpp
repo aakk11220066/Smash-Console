@@ -37,8 +37,7 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 #endif
 
 #define DIGITS "1234567890"
-#define BuiltInID -2
-#define BuiltInCMD "BuiltInCMD"
+const std::string COMMAND_UNPRINT = "cmd not to print";
 const job_id_t UNINITIALIZED_JOB_ID=-1;
 const job_id_t FG_JOB_ID = 0;
 const int NO_OPTIONS = 0;
@@ -223,37 +222,45 @@ TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
         if (difftime(time(nullptr), timed_pcb.getAbortTime()) == 0) {
             pid_t pid = timed_pcb.getProcessId();
             // in case of built-in command
-            if (pid == BuiltInID) return &timed_pcb;
+            if (pid == UNINITIALIZED_JOB_ID) return &timed_pcb;
 
             // in case background command already finished
             if (waitpid(timed_pcb.getProcessId(), nullptr, WNOHANG)<0) {
                 throw SmashExceptions::SyscallException("waitpid");
             }
+            /*
             int killStatus = kill(pid, 0);
             if (killStatus < 0 && errno == ESRCH) {
                 return nullptr;
                 }
-            }
-        //background command un-finished
+            */
+            if (!::sendSignal(timed_pcb, SIGKILL)) return nullptr;
+            //background command un-finished
             return &timed_pcb;
+            }
         }
     return nullptr;
 }
 
 void SmallShell::RemoveLateProcesses() {
     //remove from list all jobs who have just expired
-    for (TimedProcessControlBlock timed_pcb: jobs.timed_processes) {
-        cout << "hi there" << endl;
-        if (difftime(time(nullptr), timed_pcb.getAbortTime()) == 0) {
-            if (timed_pcb.getIsBackground()) jobs.removeJobById(timed_pcb.getJobId());
-            std::list<TimedProcessControlBlock>::iterator position =
-                    find(jobs.timed_processes.begin(), jobs.timed_processes.end(), timed_pcb);
-            //PROBLEMATIC
-            jobs.timed_processes.erase(position);
-            return;
+
+    auto it = jobs.timed_processes.begin();
+    while (it != jobs.timed_processes.end()) {
+        if (difftime(time(nullptr), it->getAbortTime()) == 0) {
+            if (it->getIsBackground()) jobs.removeJobById(it->getJobId());
+            it = jobs.timed_processes.erase(it);
+            //return;
+        } else {
+            ++it;
         }
     }
+}
     /*
+             for (auto it = smash->jobs.timed_processes.begin(); it != smash->jobs.timed_processes.end(); ++it) {
+        if (!*it) continue; //AKIVA - to prevent segmentation faults
+        if (jobId == (*it)->getJobId()) smash->jobs.timed_processes.erase(it);
+    }
     //cout << pid << endl << pcb->getProcessId() << endl;
     if (difftime(time(nullptr), timed_pcb.getAbortTime()) == 0) {
         jobs.timed_processes.remove(timed_pcb);
@@ -261,12 +268,12 @@ void SmallShell::RemoveLateProcesses() {
         jobs.removeJobById(timed_pcb.getJobId());
         continue;
     }
-     */
+
     //}
     //sort list after deletion for the next alarm signal
     //jobs.timed_processes.sort();
 }
-
+*/
 
 void SmallShell::executeCommand(string cmd_line) {
     containedExecute(containedBuild(cmd_line));
@@ -1062,7 +1069,7 @@ void TimeoutCommand::execute() {
     //in case of built-in command
     if (innerCommand->isBuiltIn) {
         innerCommand->execute();
-        smash->jobs.addTimedProcess(BuiltInID, BuiltInID, BuiltInCMD, waitNumber);
+        smash->jobs.addTimedProcess(UNINITIALIZED_JOB_ID, UNINITIALIZED_JOB_ID, COMMAND_UNPRINT, waitNumber);
         smash->jobs.setAlarmSignal();
         return;
     }
