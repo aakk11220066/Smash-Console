@@ -31,6 +31,7 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 #define DEBUG_PRINT(err_msg) /*cerr << "DEBUG: " << err_msg << endl*/
 #define DIGITS "1234567890"
 #define BuiltInID -2
+#define BuiltInCMD "builtInID"
 
 /// USE THIS WHEN SENDING ORDERS TO PROCESSES THAT SHOULD AFFECT PROCESS'S CHILDREN!
 /// \param pcb process control block representing process to send signal to
@@ -197,15 +198,29 @@ TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
 void SmallShell::RemoveLateProcesses() {
     //remove from list all jobs who have just expired
     for (TimedProcessControlBlock timed_pcb: jobs.timed_processes) {
+        cout << "hi there" << endl;
+        if (difftime(time(nullptr), timed_pcb.getAbortTime()) == 0) {
+            if (timed_pcb.getJobId() != BuiltInID) jobs.removeJobById(timed_pcb.getJobId());
+            std::list<TimedProcessControlBlock>::iterator position =
+                    find(jobs.timed_processes.begin(), jobs.timed_processes.end(), timed_pcb);
+            //if (position != this->end()) std::vector<T>::erase(position);
+            //PROBLEMATIC
+            jobs.timed_processes.erase(position);
+            return;
+        }
+    }
+        /*
         //cout << pid << endl << pcb->getProcessId() << endl;
         if (difftime(time(nullptr), timed_pcb.getAbortTime()) == 0) {
             jobs.timed_processes.remove(timed_pcb);
             // erase from map
             jobs.removeJobById(timed_pcb.getJobId());
+            continue;
         }
-    }
+         */
+    //}
     //sort list after deletion for the next alarm signal
-    jobs.timed_processes.sort();
+    //jobs.timed_processes.sort();
 }
 
 
@@ -524,8 +539,10 @@ void JobsManager::addTimedProcess(const job_id_t jobId,
     timed_processes.sort();
 }
 
-void JobsManager::setAlarmSignal() const{
+void JobsManager::setAlarmSignal(){
+    if (timed_processes.empty()) return;
     assert(!timed_processes.empty());
+    timed_processes.sort();
     int alarmNumber = (int)difftime(timed_processes.begin()->getAbortTime(),time(nullptr));
     assert(alarmNumber > 0);
     alarm(alarmNumber);
@@ -965,7 +982,7 @@ TimeoutCommand::TimeoutCommand(string cmd_line, SmallShell *smash) : Command(cmd
     inner_cmd_line = trimmed_cmd.substr(trimmed_cmd.find_first_of(str_number) + str_number.length() + 1,
                                         trimmed_cmd.length() + 1);
 
-    /*
+
     //check to avoid timeout loop in command, if it exists i distort it so that CreatingCommand fails regularly, but removing the 1st letter
     string opcode = inner_cmd_line.substr(0, inner_cmd_line.find_first_of(WHITESPACE));
     if (("timeout") == opcode) inner_cmd_line.erase(0, 1);
@@ -974,15 +991,15 @@ TimeoutCommand::TimeoutCommand(string cmd_line, SmallShell *smash) : Command(cmd
         (("quit") == opcode)) {
         isBuiltIn = true;
     }
-    */ //AKIVA - set BuiltInCommand constructor to set isBuiltIn=true
+     //AKIVA - set BuiltInCommand constructor to set isBuiltIn=true
 
     innerCommand = smash->CreateCommand(inner_cmd_line);
     innerCommand->isTimeOut = true;
-    innerCommand->waitNumber = waitNumber;
     //set cmd_line for inner command to include 'timeout' in string
     innerCommand->cmd_line = cmd_line;
     cout << inner_cmd_line << endl; //DEBUG
     waitNumber = stoi(str_number);
+    innerCommand->waitNumber = waitNumber;
 
 }
 
@@ -991,7 +1008,7 @@ void TimeoutCommand::execute() {
     //in case of built-in command
     if (isBuiltIn) {
         innerCommand->execute();
-        smash->jobs.addTimedProcess(BuiltInID, BuiltInID, " ", waitNumber);
+        smash->jobs.addTimedProcess(BuiltInID, BuiltInID, BuiltInCMD, waitNumber);
         smash->jobs.setAlarmSignal();
         return;
     }

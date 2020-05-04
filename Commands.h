@@ -81,7 +81,7 @@ public:
                                       const std::string& creatingCommand, int futureSeconds);
 
 
-    void setAlarmSignal() const;
+    void setAlarmSignal();
 
 
 };
