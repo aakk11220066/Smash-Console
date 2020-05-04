@@ -503,6 +503,7 @@ void JobsManager::addJob(const ProcessControlBlock &pcb) {
     job_id_t newJobId = pcb.getJobId();
     if (newJobId == UNINITIALIZED_JOB_ID || newJobId==FG_JOB_ID) newJobId = ++maxIndex;
     const_cast<ProcessControlBlock &>(pcb).setJobId(newJobId);
+    processes.erase(newJobId); //new element should overwrite old element
     processes.insert(pair<job_id_t,
             ProcessControlBlock>(newJobId, pcb));
 
@@ -593,9 +594,13 @@ void ForegroundCommand::execute() {
     smash->sendSignal(SIGCONT, jobId);
     pid_t pid = pcb->getProcessId();
 
-    smash->setForegroundProcess(pcb);
+    //make a copy to prevent foregroundProcess from becoming a dangling pointer after job removal
+    ProcessControlBlock reservePcb = ProcessControlBlock(*pcb);
+
+    smash->setForegroundProcess(&reservePcb);
     smash->jobs.removeJobById(jobId);
-    const int waitStatus = waitpid(pid, nullptr, WUNTRACED);
+    int jobData=0;//debug
+    const int waitStatus = waitpid(pid, &jobData, WUNTRACED);
     if (waitStatus < 0) throw SmashExceptions::SyscallException("waitpid");
     smash->setForegroundProcess(nullptr);
 
@@ -818,7 +823,9 @@ void PipeCommand::executeBackgroundable() {
 
             //wait for commandTo fork and for commandFrom fork to finish
             if (wait(nullptr)<0) throw SmashExceptions::SyscallException("wait");
+            DEBUG_PRINT("Finished waiting for process 1");
             if (wait(nullptr)<0) throw SmashExceptions::SyscallException("wait");
+            DEBUG_PRINT("Finished waiting for process 2.  Exiting");
             pidFrom = pidTo = -1;
         }
     }
