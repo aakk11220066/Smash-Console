@@ -69,13 +69,15 @@ class TimedProcessControlBlock : public ProcessControlBlock {
 private:
     //ROI - field for timed process
     time_t abortTime;
+    bool isBackground = false;
 
 public:
     TimedProcessControlBlock(const job_id_t jobId,
                              const pid_t processId,
-                             const std::string &creatingCommand, int futureSeconds);
+                             const std::string &creatingCommand, int futureSeconds, bool flag = false);
 
     time_t getAbortTime() const;
+    bool getIsBackground() const;
 
     bool operator<(const TimedProcessControlBlock &rhs) const;
 

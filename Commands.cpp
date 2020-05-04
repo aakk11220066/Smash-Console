@@ -31,6 +31,7 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 #define DEBUG_PRINT(err_msg) /*cerr << "DEBUG: " << err_msg << endl*/
 #define DIGITS "1234567890"
 #define BuiltInID -2
+#define BuiltInCMD "BuiltInCMD"
 const job_id_t UNINITIALIZED_JOB_ID=-1;
 const job_id_t FG_JOB_ID = 0;
 
@@ -199,15 +200,28 @@ TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
 void SmallShell::RemoveLateProcesses() {
     //remove from list all jobs who have just expired
     for (TimedProcessControlBlock timed_pcb: jobs.timed_processes) {
-        //cout << pid << endl << pcb->getProcessId() << endl;
+        cout << "hi there" << endl;
         if (difftime(time(nullptr), timed_pcb.getAbortTime()) == 0) {
-            jobs.timed_processes.remove(timed_pcb);
-            // erase from map
-            jobs.removeJobById(timed_pcb.getJobId());
+            if (timed_pcb.getIsBackground()) jobs.removeJobById(timed_pcb.getJobId());
+            std::list<TimedProcessControlBlock>::iterator position =
+                    find(jobs.timed_processes.begin(), jobs.timed_processes.end(), timed_pcb);
+            //PROBLEMATIC
+            jobs.timed_processes.erase(position);
+            return;
         }
     }
+    /*
+    //cout << pid << endl << pcb->getProcessId() << endl;
+    if (difftime(time(nullptr), timed_pcb.getAbortTime()) == 0) {
+        jobs.timed_processes.remove(timed_pcb);
+        // erase from map
+        jobs.removeJobById(timed_pcb.getJobId());
+        continue;
+    }
+     */
+    //}
     //sort list after deletion for the next alarm signal
-    jobs.timed_processes.sort();
+    //jobs.timed_processes.sort();
 }
 
 
@@ -523,15 +537,17 @@ job_id_t JobsManager::resetMaxIndex() {
 
 void JobsManager::addTimedProcess(const job_id_t jobId,
                                   const pid_t processId,
-                                  const std::string& creatingCommand, int futureSeconds){
-    TimedProcessControlBlock timed_pcb = TimedProcessControlBlock(jobId, processId, creatingCommand, futureSeconds);
+                                  const std::string& creatingCommand, int futureSeconds, bool flag){
+    TimedProcessControlBlock timed_pcb = TimedProcessControlBlock(jobId, processId, creatingCommand, futureSeconds, flag);
     timed_processes.push_front(timed_pcb);
     //sort processes by futureTime
     timed_processes.sort();
 }
 
-void JobsManager::setAlarmSignal() const{
+void JobsManager::setAlarmSignal(){
+    if (timed_processes.empty()) return;
     assert(!timed_processes.empty());
+    timed_processes.sort();
     int alarmNumber = (int)difftime(timed_processes.begin()->getAbortTime(),time(nullptr));
     assert(alarmNumber > 0);
     alarm(alarmNumber);
@@ -701,7 +717,7 @@ void BackgroundableCommand::execute() {
             smash->jobs.addJob(*this, pid);
             // ROI - timeout handling
             if (isTimeOut) {
-                smash->jobs.addTimedProcess(smash->jobs.getLastJob()->getJobId(), pid, cmd_line, waitNumber);
+                smash->jobs.addTimedProcess(smash->jobs.getLastJob()->getJobId(), pid, cmd_line, waitNumber, true);
                 smash->jobs.setAlarmSignal();
             }
         }
@@ -992,20 +1008,20 @@ TimeoutCommand::TimeoutCommand(string cmd_line, SmallShell *smash) : Command(cmd
 
     innerCommand = smash->CreateCommand(inner_cmd_line);
     innerCommand->isTimeOut = true;
-    innerCommand->waitNumber = waitNumber;
     //set cmd_line for inner command to include 'timeout' in string
     innerCommand->cmd_line = cmd_line;
-    cout << inner_cmd_line << endl; //DEBUG
+    //cout << inner_cmd_line << endl; //DEBUG
     waitNumber = stoi(str_number);
+    innerCommand->waitNumber = waitNumber;
 
 }
 
 void TimeoutCommand::execute() {
 
     //in case of built-in command
-    if (isBuiltIn) {
+    if (innerCommand->isBuiltIn) {
         innerCommand->execute();
-        smash->jobs.addTimedProcess(BuiltInID, BuiltInID, " ", waitNumber);
+        smash->jobs.addTimedProcess(BuiltInID, BuiltInID, BuiltInCMD, waitNumber);
         smash->jobs.setAlarmSignal();
         return;
     }

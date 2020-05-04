@@ -79,7 +79,7 @@ public:
 //AKIVA: why not just use isBuiltIn field of Command class?
     void addTimedProcess(const job_id_t jobId,
                                       const pid_t processId,
-                                      const std::string& creatingCommand, int futureSeconds);
+                                      const std::string& creatingCommand, int futureSeconds, bool flag = false);
 
 
     void setAlarmSignal();
