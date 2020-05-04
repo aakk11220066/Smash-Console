@@ -107,13 +107,18 @@ std::ostream& operator<<(std::ostream &outstream, ProcessControlBlock &pcb) {
 //Roi timed process functions
 TimedProcessControlBlock::TimedProcessControlBlock(const job_id_t jobId,
                                                    const pid_t processId,
-                                                   const std::string& creatingCommand, int futureSeconds) :
+                                                   const std::string& creatingCommand, int futureSeconds, bool flag) :
         ProcessControlBlock(jobId, processId, creatingCommand),
-        abortTime(startTime+futureSeconds)
+        abortTime(startTime+futureSeconds),
+        isBackground(flag)
 {}
 
 time_t TimedProcessControlBlock::getAbortTime() const {
     return abortTime;
+}
+
+bool TimedProcessControlBlock::getIsBackground() const {
+    return isBackground;
 }
 
 //akba TimedProcessControlBlock* timed_pcb
