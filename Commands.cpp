@@ -1042,18 +1042,6 @@ TimeoutCommand::TimeoutCommand(string cmd_line, SmallShell *smash) : Command(cmd
         throw SmashExceptions::InvalidArgumentsException("timeout");
     inner_cmd_line = trimmed_cmd.substr(trimmed_cmd.find_first_of(str_number) + str_number.length() + 1,
                                         trimmed_cmd.length() + 1);
-
-    /*
-    //check to avoid timeout loop in command, if it exists i distort it so that CreatingCommand fails regularly, but removing the 1st letter
-    string opcode = inner_cmd_line.substr(0, inner_cmd_line.find_first_of(WHITESPACE));
-    if (("timeout") == opcode) inner_cmd_line.erase(0, 1);
-    if ((("chprompt") == opcode) || (("showpid") == opcode) || (("pwd") == opcode) || (("cd") == opcode) ||
-        (("jobs") == opcode) || (("kill") == opcode) || (("bg") == opcode) || (("fg") == opcode) ||
-        (("quit") == opcode)) {
-        isBuiltIn = true;
-    }
-    */ //AKIVA - set BuiltInCommand constructor to set isBuiltIn=true
-
     innerCommand = smash->CreateCommand(inner_cmd_line);
     innerCommand->isTimeOut = true;
     //set cmd_line for inner command to include 'timeout' in string
@@ -1076,77 +1064,6 @@ void TimeoutCommand::execute() {
     //in case of external command
     innerCommand->execute();
 }
-
-//ROI old execute
-/*
-void TimeoutCommand::execute() {
-
-    //in case of built-in command
-    if (isBuiltIn) {
-        innerCommand->execute();
-        smash->jobs.addTimedProcess(BuiltInID, BuiltInID, " ", waitNumber);
-        smash->jobs.setAlarmSignal();
-        return;
-    }
-
-    //fork a son
-    pid_t pid = fork();
-    if (pid < 0) throw SmashExceptions::SyscallException("fork");
-    if (pid == 0){
-        if (setpgrp() < 0) throw SmashExceptions::SyscallException("setpgrp");
-        execl("/bin/bash", "/bin/bash", "-c", _removeBackgroundSign(inner_cmd_line).c_str(), NULL);
-        exit(0);
-    }
-
-    else{
-        //if !backgroundRequest then wait for son, inform smash that a foreground program is running
-        if (!backgroundRequest){
-            const job_id_t FG_JOB_ID = 0;
-            ProcessControlBlock foregroundPcb = ProcessControlBlock(FG_JOB_ID, pid, cmd_line);
-            smash->setForegroundProcess(&foregroundPcb);
-
-            //ROI
-            smash->jobs.addTimedProcess(foregroundPcb.getJobId(), pid, cmd_line, waitNumber);
-            smash->jobs.setAlarmSignal();
-
-            //ProcessControlBlock* timed_pcb = smash->getForegroundProcess1();
-            //smash->setIsForgroundTimed(true);
-            //smash->djobs.timed_processes.push_back(timed_pcb);
-            const int waitStatus = waitpid(pid, nullptr, WUNTRACED);
-            if (waitStatus < 0) throw SmashExceptions::SyscallException("waitpid");
-            //smash->setIsForgroundTimed(false);
-            smash->setForegroundProcess(nullptr);
-        }
-            //else add to jobs
-        else{
-            smash->jobs.addJob(*this, pid);
-
-
-
-            ProcessControlBlock *foregroundPcb2 = smash->jobs.getLastJob();
-            foregroundPcb2->duration = waitNumber;
-            foregroundPcb2->setStartTime((time(nullptr)));
-            smash->jobs.timed_processes.push_back(foregroundPcb2);
-
-            smash->jobs.addTimedProcess(smash->jobs.getLastJob()->getJobId(), pid, cmd_line, waitNumber);
-            smash->jobs.setAlarmSignal();
-        }
-    }
-}
-*/
-
-/*
-void TimeoutCommand::execute() {
-    //in case of built-in command
-    if (isBuiltIn) {
-        innerCommand->execute();
-        alarm(waitNumber);
-        return;
-    }
-    //in case of special command
-
-}
- */
 
 ExternalCommand::ExternalCommand(string cmd_line, SmallShell *smash) : BackgroundableCommand(cmd_line, smash) {}
 
