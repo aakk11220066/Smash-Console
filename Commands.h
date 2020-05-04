@@ -15,8 +15,12 @@
 #define COMMAND_ARGS_MAX_LENGTH (200)
 #define COMMAND_MAX_ARGS (20)
 #define HISTORY_MAX_RECORDS (50)
-#define DEBUG_PRINT(err_msg) /*std::cerr << "DEBUG: " << err_msg << std::endl*/
 
+#ifndef NDEBUG
+#define DEBUG_PRINT(err_msg) std::cerr << "DEBUG: " << err_msg << std::endl
+#else
+#define DEBUG_PRINT(err_msg)
+#endif
 
 
 typedef int errno_t;
@@ -226,9 +230,15 @@ public:
 class RedirectionCommand : public PipeCommand {
 private:
     bool append = false;
+
+protected:
     class WriteCommand : public Command{
         std::ofstream sink;
         void writeToSink();
+        string closingMessage="";
+    public:
+        void setClosingMessage(const string &closingMessage);
+
     public:
         explicit WriteCommand(string fileName, bool append, SmallShell* smash);
         virtual ~WriteCommand();
@@ -237,8 +247,7 @@ private:
 
 public:
     RedirectionCommand(std::string cmd_line, SmallShell* smash);
-    RedirectionCommand(unique_ptr<Command> commandFrom, string filename, bool append,
-            SmallShell* smash);
+    RedirectionCommand(unique_ptr<Command> commandFrom, string filename, bool append, SmallShell *smash);
     virtual ~RedirectionCommand() = default;
     void execute() override;
 };
