@@ -239,17 +239,22 @@ TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
 
 void SmallShell::RemoveLateProcesses() {
     //remove from list all jobs who have just expired
-
+    bool isBackground = false;
+    job_id_t j_id = UNINITIALIZED_JOB_ID;
     auto it = jobs.timed_processes.begin();
     while (it != jobs.timed_processes.end()) {
         if (difftime(time(nullptr), it->getAbortTime()) == 0) {
-            if (it->getIsBackground()) jobs.removeJobById(it->getJobId());
+            if (it->getIsBackground()) {
+                isBackground = true;
+                j_id = it->getJobId();
+            }
             it = jobs.timed_processes.erase(it);
             //return;
         } else {
             ++it;
         }
     }
+    if (isBackground && (j_id != UNINITIALIZED_JOB_ID)) jobs.removeJobById(j_id);
 }
     /*
              for (auto it = smash->jobs.timed_processes.begin(); it != smash->jobs.timed_processes.end(); ++it) {
