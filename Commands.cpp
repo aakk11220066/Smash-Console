@@ -216,6 +216,7 @@ std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
 
 TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
 {
+    //jobs.removeFinishedJobs();
     for (TimedProcessControlBlock& timed_pcb: jobs.timed_processes) {
 
         if (difftime(time(nullptr), timed_pcb.getAbortTime()) == 0) {
@@ -223,6 +224,7 @@ TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
             // in case of built-in command
             if (pid == UNINITIALIZED_JOB_ID) return &timed_pcb;
 
+            if(kill(timed_pcb.getProcessId(),0) != 0) return nullptr;
             // in case background command already finished
             if (waitpid(timed_pcb.getProcessId(), nullptr, WNOHANG)<0) {
                 throw SmashExceptions::SyscallException("waitpid");
@@ -486,14 +488,16 @@ void JobsManager::removeJobById(job_id_t jobId) {
     waitingHeap.erase(&processes.at(jobId));
     //remove from map
     processes.erase(jobId);
-
-    /*
     // remove from timed_processes list
-    for (ProcessControlBlock* pcb : smash.jobs.timed_processes){
-        if (pcb->getJobId() == jobId) timed_processes.remove(pcb);
+    auto it = timed_processes.begin();
+    while (it != timed_processes.end()) {
+        if (it->getJobId() == jobId) {
+            it = timed_processes.erase(it);
+            //return;
+        } else {
+            ++it;
+        }
     }
-     */
-
 }
 
 void JobsManager::pauseJob(job_id_t jobId) {
