@@ -117,7 +117,7 @@ public:
     /// \return new process group
     signal_t escapeSmashProcessGroup();
 
-    unique_ptr<Command> containedBuild(const string &cmd_line);
+    unique_ptr<Command> containedBuild(const string cmd_line);
     bool containedExecute(const unique_ptr<Command> &cmd);
 
 public:
@@ -165,7 +165,7 @@ protected:
 
 public:
     bool verbose = true;
-    std::string cmd_line;
+    std::string cmd_line = string();
     bool isBuiltIn = false;
     bool isTimeOut = false;
     int waitNumber = 0;
@@ -214,9 +214,8 @@ private:
     pid_t processGroupTo = processGroupFrom;
     pid_t *processGroupToPtr=&processGroupTo, *processGroupFromPtr=&processGroupFrom;
     int pipeSides[2] = {0,0};
-    string cmd_lineFrom="", cmd_lineTo="";
+    string cmd_lineFrom=string(), cmd_lineTo=string();
 
-    unique_ptr<Command> buildAndRunCommand(const string &cmd_line, bool exists);
     void commandFromBuiltinExecution();
     void commandFromNonBuiltinExecution();
     void commandFromExecution();
@@ -238,9 +237,8 @@ private:
 
 protected:
     class WriteCommand : public Command{
-        std::ofstream sink;
-        void writeToSink();
-        string closingMessage="";
+        std::ofstream sink = std::ofstream();
+        string closingMessage=string();
     public:
         void setClosingMessage(const string &closingMessage);
 

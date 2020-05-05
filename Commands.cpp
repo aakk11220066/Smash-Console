@@ -55,7 +55,7 @@ bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCo
 }
 
 
-std::unique_ptr<Command> SmallShell::containedBuild(const string &cmd_line){
+std::unique_ptr<Command> SmallShell::containedBuild(const string cmd_line){
     unique_ptr<Command> result;
     try {
         return std::move(this->CreateCommand(cmd_line));
@@ -143,7 +143,7 @@ string _trim(const std::string &s) {
 int _parseCommandLine(string cmd_line, char **args) {
     FUNC_ENTRY()
     int i = 0;
-    std::istringstream iss(_trim(string(cmd_line)).c_str());
+    std::istringstream iss(_trim(cmd_line).c_str());
     for (std::string s; iss >> s;) {
         args[i] = (char *) malloc(s.length() + 1);
         memset(args[i], 0, s.length() + 1);
@@ -365,9 +365,10 @@ std::vector<std::string> initArgs(string cmd_line) {
     return args;
 }
 
-Command::Command(string cmd_line, SmallShell *smash) : smash(smash), cmd_line(cmd_line) {
-    args = initArgs(cmd_line);
-}
+Command::Command(string cmd_line, SmallShell *smash) :
+    smash(smash),
+    cmd_line(cmd_line),
+    args(initArgs(cmd_line)) {}
 
 void ChpromptCommand::execute() {
     smash->setSmashPrompt(newPrompt + "> ");
@@ -780,7 +781,7 @@ PipeCommand::PipeCommand(std::string cmd_line, SmallShell *smash) : Backgroundab
 
 
 PipeCommand::PipeCommand(std::unique_ptr<Command> commandFrom, std::unique_ptr<Command> commandTo, SmallShell *smash) :
-        BackgroundableCommand(cmd_line, smash), commandFrom(std::move(commandFrom)),
+        BackgroundableCommand(string(), smash), commandFrom(std::move(commandFrom)),
         commandTo(std::move(commandTo)) {
 
     //create pipe
@@ -905,12 +906,12 @@ unsigned short indicator(bool condition) {
 
 RedirectionCommand::RedirectionCommand(unique_ptr<Command> commandFrom, string filename, bool append, SmallShell *smash) :
         PipeCommand(std::move(commandFrom),
-                unique_ptr<Command>(new WriteCommand(filename, append, smash)), smash) {}
+                std::move(unique_ptr<Command>(new WriteCommand(filename, append, smash))), smash) {}
 
 
 #define OPERATOR_POSITION (cmd_line.find_first_of('>'))
 RedirectionCommand::RedirectionCommand(std::string cmd_line, SmallShell *smash) :
-        RedirectionCommand(smash->CreateCommand(cmd_line.substr(0, OPERATOR_POSITION)),
+        RedirectionCommand(std::move(smash->CreateCommand(cmd_line.substr(0, OPERATOR_POSITION))),
                            _trim(_removeBackgroundSign(cmd_line).substr(OPERATOR_POSITION + 1
                                                                         + indicator(
                                    cmd_line.at(1 + OPERATOR_POSITION) == '>'))),
