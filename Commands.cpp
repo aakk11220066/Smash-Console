@@ -599,7 +599,7 @@ KillCommand::KillCommand(string cmd_line, SmallShell *smash) : BuiltInCommand(cm
         signum = -stoi(args[1]);
         jobId = stoi(args[2]);
         if (signum>31) throw SmashExceptions::InvalidArgumentsException("kill");
-    } catch (std::invalid_argument e) {
+    } catch (std::invalid_argument& e) {
         throw SmashExceptions::InvalidArgumentsException("kill");
     }
 }
@@ -1035,6 +1035,7 @@ TimeoutCommand::TimeoutCommand(string cmd_line, SmallShell *smash) : Command(cmd
     unsigned short digits_index = _trim(no_timeout_cmd).find_first_of(DIGITS);
     if (digits_index != 0) throw SmashExceptions::InvalidArgumentsException("timeout");
     unsigned short digits_end_index = _trim(no_timeout_cmd).find_first_of(' ');
+    if (digits_end_index > 100) throw SmashExceptions::InvalidArgumentsException("timeout");
     string str_number = _trim(no_timeout_cmd).substr(digits_index, digits_end_index);
     if (str_number.find_first_not_of(DIGITS) != std::string::npos)
         throw SmashExceptions::InvalidArgumentsException("timeout");
