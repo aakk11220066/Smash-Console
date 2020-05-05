@@ -11,6 +11,7 @@
 #include <limits.h>
 #include <type_traits>
 #include <stdio.h>
+#include <fcntl.h>
 #include "Commands.h"
 
 using namespace std;
@@ -54,6 +55,9 @@ bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCo
     return result;
 }
 
+unsigned short indicator(bool condition) {
+    return condition ? 1 : 0;
+}
 
 std::unique_ptr<Command> SmallShell::containedBuild(const string cmd_line){
     unique_ptr<Command> result;
@@ -194,8 +198,13 @@ std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
     //Special commands
     if ((cmd_s.find('|') != string::npos) && (("chprompt") != opcode))
         return std::unique_ptr<Command>(new PipeCommand(cmd_line, this));
-    else if ((cmd_s.find('>') != string::npos) && (("chprompt") != opcode))
-        return std::unique_ptr<Command>(new RedirectionCommand(cmd_line, this));
+    else if ((cmd_s.find('>') != string::npos) && (("chprompt") != opcode)) {
+
+        int operatorPosition = (cmd_line.find_first_of('>'));
+        RedirectionCommand::createEmptyFile(cmd_line); //this is in case command fails before file is created
+
+        return std::unique_ptr<Command>(new RedirectionCommand(cmd_line, operatorPosition, this));
+    }
     else if (("cp") == opcode) return std::unique_ptr<Command>(new CopyCommand(cmd_line, this));
     else if (("timeout") == opcode) return std::unique_ptr<Command>(new TimeoutCommand(cmd_line, this)); //DEBUG
 
@@ -904,29 +913,38 @@ PipeCommand::~PipeCommand() {
     }
 }
 
-unsigned short indicator(bool condition) {
-    return condition ? 1 : 0;
-}
-
 RedirectionCommand::RedirectionCommand(unique_ptr<Command> commandFrom, string filename, bool append, SmallShell *smash) :
         PipeCommand(std::move(commandFrom),
                 std::move(unique_ptr<Command>(new WriteCommand(filename, append, smash))), smash) {}
 
 
-#define OPERATOR_POSITION (cmd_line.find_first_of('>'))
-RedirectionCommand::RedirectionCommand(std::string cmd_line, SmallShell *smash) :
-        RedirectionCommand(std::move(smash->CreateCommand(cmd_line.substr(0, OPERATOR_POSITION))),
-                           _trim(_removeBackgroundSign(cmd_line).substr(OPERATOR_POSITION + 1
-                                                                        + indicator(
-                                   cmd_line.at(1 + OPERATOR_POSITION) == '>'))),
-                           cmd_line.at(1 + OPERATOR_POSITION) == '>',
-                           smash) {}
-#undef OPERATOR_POSITION
+RedirectionCommand::RedirectionCommand(std::string cmd_line, int operatorPosition, SmallShell *smash) :
+        RedirectionCommand(std::move(smash->CreateCommand(cmd_line.substr(0, operatorPosition))),
+            _trim(_removeBackgroundSign(cmd_line).substr(operatorPosition + 1
+                + indicator(cmd_line.at(1 + operatorPosition) == '>'))),
+            cmd_line.at(1 + operatorPosition) == '>',
+            smash) {
+
+    this->cmd_line = cmd_line;
+    backgroundRequest = _isBackgroundComamnd(cmd_line);
+    //args not set, but may be with the following command
+    //args = initArgs(cmd_line);
+}
 
 
 void RedirectionCommand::execute() {
     isRedirectionBuiltinForegroundCommand = commandFrom->isBuiltIn && !BackgroundableCommand::backgroundRequest;
     PipeCommand::execute();
+}
+
+void RedirectionCommand::createEmptyFile(const string& cmd_line) {
+    int operatorPosition = (cmd_line.find_first_of('>'));
+    string pathName = _trim(_removeBackgroundSign(cmd_line).substr(operatorPosition + 1
+            + indicator(cmd_line.at(1 + operatorPosition) == '>')));
+
+    int placeholderFile = open(pathName.c_str(), O_CREAT|O_WRONLY, S_IRWXU|S_IRWXG|S_IRWXO);
+    if (placeholderFile < 0) throw SmashExceptions::SyscallException("open");
+    if (close(placeholderFile) < 0) throw SmashExceptions::SyscallException("close");
 }
 
 RedirectionCommand::WriteCommand::WriteCommand(string fileName, bool append, SmallShell *smash) :

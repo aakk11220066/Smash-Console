@@ -249,7 +249,10 @@ protected:
     };
 
 public:
-    RedirectionCommand(std::string cmd_line, SmallShell* smash);
+    static void createEmptyFile(const string& cmd_line);
+
+public:
+    RedirectionCommand(std::string cmd_line, int operatorPosition, SmallShell* smash);
     RedirectionCommand(unique_ptr<Command> commandFrom, string filename, bool append, SmallShell *smash);
     virtual ~RedirectionCommand() = default;
     void execute() override;
