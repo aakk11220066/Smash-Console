@@ -216,7 +216,6 @@ std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
 
 TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
 {
-
     for (TimedProcessControlBlock& timed_pcb: jobs.timed_processes) {
 
         if (difftime(time(nullptr), timed_pcb.getAbortTime()) == 0) {
@@ -228,12 +227,6 @@ TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
             if (waitpid(timed_pcb.getProcessId(), nullptr, WNOHANG)<0) {
                 throw SmashExceptions::SyscallException("waitpid");
             }
-            /*
-            int killStatus = kill(pid, 0);
-            if (killStatus < 0 && errno == ESRCH) {
-                return nullptr;
-                }
-            */
             if (!::sendSignal(timed_pcb, SIGKILL)) return nullptr;
             //background command un-finished
             return &timed_pcb;
