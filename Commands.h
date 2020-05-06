@@ -152,7 +152,7 @@ public:
 
     void executeCommand(std::string cmd_line);
 
-    const std::string &getSmashPrompt() const;
+    const std::string &getSmashPrompt() const noexcept;
 
     void setSmashPrompt(const std::string &smashPrompt);
 };
@@ -360,12 +360,17 @@ private:
     string getSourceFile(std::vector<std::string> args);
     string getTargetFile(std::vector<std::string> args);
 
+private:
     bool isSameFile(string fileFrom, string fileTo);
 
 public:
     CopyCommand(string cmd_line, SmallShell* smash);
     virtual ~CopyCommand() = default;
     void execute() override;
+
+    //checks if file we're copying from is the file we're copying to.  Needs a parameter to pass along without
+    // modification to allow usage in the initializer list
+    ReadCommand *duplicityCheck(ReadCommand *passAlong, const std::vector<std::string>& args);
 };
 
 class ChpromptCommand : public BuiltInCommand {
@@ -456,7 +461,9 @@ public:
 };
 class SmashExceptions::SameFileException : public Exception{
 public:
-    SameFileException() : Exception("",""){}
+    SameFileException(const string& closingMessage) : Exception("",""){
+        whatMsg = closingMessage;
+    }
 };
 
 #undef DEBUG_PRINT

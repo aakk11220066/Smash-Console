@@ -64,7 +64,9 @@ std::unique_ptr<Command> SmallShell::containedBuild(const string cmd_line){
     try {
         return std::move(this->CreateCommand(cmd_line));
     }
-    catch (SmashExceptions::SameFileException& e) {}
+    catch (SmashExceptions::SameFileException& e) {
+        cout << e.what() << endl;
+    }
     catch (SmashExceptions::SyscallException& error){
         std::perror(error.what());
         fflush(stderr);
@@ -82,7 +84,9 @@ bool SmallShell::containedExecute(const unique_ptr<Command> &cmd) {
             return true;
         }
     }
-    catch (SmashExceptions::SameFileException& e) {}
+    catch (SmashExceptions::SameFileException& e) {
+        cout << e.what() << endl;
+    }
     catch (SmashExceptions::SyscallException& error){
         std::perror(error.what());
         fflush(stderr);
@@ -292,7 +296,7 @@ void SmallShell::executeCommand(string cmd_line) {
     if (!isSmashProcess) exit(0); //only smash may continue operation, not processes that escaped via exception throw
 }
 
-const string &SmallShell::getSmashPrompt() const {
+const string &SmallShell::getSmashPrompt() const noexcept {
     return smashPrompt;
 }
 
@@ -966,11 +970,11 @@ void RedirectionCommand::WriteCommand::execute() {
         sink.write(&buf, 1);
         sink.flush();
     }
+    cout<<closingMessage;
 }
 
 RedirectionCommand::WriteCommand::~WriteCommand() {
     sink.close();
-    cout<<closingMessage;
 }
 
 void RedirectionCommand::WriteCommand::setClosingMessage(const string &closingMessage) {
@@ -980,7 +984,7 @@ void RedirectionCommand::WriteCommand::setClosingMessage(const string &closingMe
 CopyCommand::CopyCommand(string cmd_line, SmallShell *smash) try :
         RedirectionCommand(
                 unique_ptr<Command>(
-                        new ReadCommand(getSourceFile((initArgs(cmd_line))), smash)),
+                        duplicityCheck(new ReadCommand(getSourceFile((initArgs(cmd_line))), smash), initArgs(cmd_line))),
                 getTargetFile(initArgs(cmd_line)),
                 false,
                 smash) {
@@ -999,6 +1003,12 @@ void CopyCommand::execute() {
     RedirectionCommand::execute();
 }
 
+CopyCommand::ReadCommand* CopyCommand::duplicityCheck(ReadCommand* passAlong, const std::vector<std::string> &args){
+    const string closingMessage = "smash: " + args.at(1) + " was copied to " + args.at(2) + "\n";
+    if (isSameFile(args.at(1), args.at(2))) throw SmashExceptions::SameFileException(closingMessage);
+    return passAlong;
+}
+
 bool CopyCommand::isSameFile(string fileFrom, string fileTo) {
     char* fullPathFrom = (char*)malloc(sizeof(char)*(1+PATH_MAX));
     char* fullPathTo = (char*)malloc(sizeof(char)*(1+PATH_MAX));
@@ -1008,8 +1018,11 @@ bool CopyCommand::isSameFile(string fileFrom, string fileTo) {
         throw SmashExceptions::SyscallException("malloc");
     }
 
-    realpath(fileFrom.c_str(), fullPathFrom);
-    realpath(fileTo.c_str(), fullPathTo);
+    if (!(realpath(fileFrom.c_str(), fullPathFrom) && realpath(fileTo.c_str(), fullPathTo))){
+        free(fullPathFrom);
+        free(fullPathTo);
+        throw SmashExceptions::SyscallException("realpath");
+    }
     bool notResult = strcmp(fullPathFrom, fullPathTo);
     free(fullPathFrom);
     free(fullPathTo);
@@ -1017,7 +1030,6 @@ bool CopyCommand::isSameFile(string fileFrom, string fileTo) {
 }
 
 string CopyCommand::getTargetFile(std::vector<std::string> args) {
-    if (isSameFile(args.at(1), args.at(2))) throw SmashExceptions::SameFileException();
     return args.at(2);
 }
 
@@ -1025,6 +1037,7 @@ string CopyCommand::getSourceFile(std::vector<std::string> args) {
     if (args.size()-1 < 2) throw SmashExceptions::InvalidArgumentsException("cp");
     return args.at(1);
 }
+
 
 CopyCommand::ReadCommand::ReadCommand(string fileName, SmallShell *smash) :
         Command("read_from " + fileName, smash) {

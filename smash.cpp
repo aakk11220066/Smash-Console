@@ -75,26 +75,26 @@ namespace SignalHandlers {
         }
 }
 
-    int main(int argc, char *argv[]) {
-        //set sigaction struct
+int main(int argc, char *argv[]) {
+    //set sigaction struct
 
-        struct sigaction action;
-        action.sa_handler = SignalHandlers::alarmHandler;
-        sigemptyset(&action.sa_mask);
-        action.sa_flags = SA_RESTART;
+    struct sigaction action;
+    action.sa_handler = SignalHandlers::alarmHandler;
+    if (sigemptyset(&action.sa_mask) < 0) perror("smash error: sigemptyset");
+    action.sa_flags = SA_RESTART;
 
 
-        DEBUG_PRINT("this pid is " << getpid() << endl);
-        if (signal(SIGTSTP, SignalHandlers::ctrlZHandler) == SIG_ERR) {
-            perror("smash error: failed to set ctrl-Z handler");
-        }
-        if (signal(SIGINT, SignalHandlers::ctrlCHandler) == SIG_ERR) {
-            perror("smash error: failed to set ctrl-C handler");
-        }
+    DEBUG_PRINT("this pid is " << getpid() << endl);
+    if (signal(SIGTSTP, SignalHandlers::ctrlZHandler) == SIG_ERR) {
+        perror("smash error: failed to set ctrl-Z handler");
+    }
+    if (signal(SIGINT, SignalHandlers::ctrlCHandler) == SIG_ERR) {
+        perror("smash error: failed to set ctrl-C handler");
+    }
 
-        if(sigaction(SIGALRM , &action, nullptr) == -1) {
-            perror("smash error: failed to set alarm signal handler");
-        }
+    if(sigaction(SIGALRM , &action, nullptr) == -1) {
+        perror("smash error: failed to set alarm signal handler");
+    }
 
     SmallShell& smash = SmallShell::getInstance();
     shell = &smash;
@@ -102,7 +102,22 @@ namespace SignalHandlers {
         std::cout << smash.getSmashPrompt();
         std::string cmd_line;
         std::getline(std::cin, cmd_line);
-        smash.jobs.removeFinishedJobs();
+
+        try{
+            smash.jobs.removeFinishedJobs();
+        }
+        catch (SmashExceptions::SameFileException& e) {
+            cout << e.what() << endl;
+        }
+        catch (SmashExceptions::SyscallException& error){
+            std::perror(error.what());
+            fflush(stderr);
+        }
+        catch (SmashExceptions::Exception &error) {
+            cerr << error.what() << endl;
+            cerr.flush();
+        }
+
         smash.executeCommand(cmd_line);
     }
     return 0;
