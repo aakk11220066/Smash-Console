@@ -225,37 +225,24 @@ std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
 
 TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
 {
-    job_id_t j_id = UNINITIALIZED_JOB_ID;
-    TimedProcessControlBlock *tmp = nullptr;
+    //jobs.removeFinishedJobs();
     for (TimedProcessControlBlock& timed_pcb: jobs.timed_processes) {
 
         if (difftime(time(nullptr), timed_pcb.getAbortTime()) == 0) {
             pid_t pid = timed_pcb.getProcessId();
             // in case of built-in command
             if (pid == UNINITIALIZED_JOB_ID) return &timed_pcb;
-            //in case of background command
-            if (timed_pcb.getIsBackground()) {
-                job_id_t j_id = timed_pcb.getJobId();
-                tmp = &timed_pcb;
-                break;
-            }
+
             if(kill(timed_pcb.getProcessId(),0) != 0) return nullptr;
-            // in case external command already finished
+            // in case background command already finished
             if (waitpid(timed_pcb.getProcessId(), nullptr, WNOHANG)<0) {
                 throw SmashExceptions::SyscallException("waitpid");
             }
             if (!::sendSignal(timed_pcb, SIGKILL)) return nullptr;
-            //shouldn't reach here
+            //background command un-finished
             return &timed_pcb;
             }
         }
-    //handling background command
-    if (j_id != UNINITIALIZED_JOB_ID) {
-        jobs.removeFinishedJobs();
-        ProcessControlBlock *pcb = jobs.getJobById(j_id);
-        if (!pcb) return nullptr;
-        else return tmp;
-    }
     return nullptr;
 }
 
