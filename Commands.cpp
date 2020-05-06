@@ -50,7 +50,9 @@ const int NO_OPTIONS = 0;
 /// \return true if succeeded, false if failed to send signal
 
 bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCodeReturned) {
-    bool result = (killpg(pcb.getProcessGroupId(), sig_num) >= 0);
+    int res1 = killpg(pcb.getProcessGroupId(), sig_num);
+    //cout << "res1 = " << res1 << ", error code" << *errCodeReturned << endl;
+    bool result = (res1 >= 0);
     if (errCodeReturned) *errCodeReturned = errno;
     return result;
 }
@@ -577,12 +579,10 @@ void JobsManager::addTimedProcess(const job_id_t jobId,
 
 void JobsManager::setAlarmSignal(){
     if (timed_processes.empty()) return;
-    //if (!timed_processes.empty()) DEBUG_PRINT("timed_processes is not empty");
     assert(!timed_processes.empty());
     timed_processes.sort();
     int alarmNumber = (int)difftime(timed_processes.begin()->getAbortTime(),time(nullptr));
-    //assert(alarmNumber > 0);
-    //DEBUG
+    assert(alarmNumber > 0);
     alarm(alarmNumber);
 }
 
