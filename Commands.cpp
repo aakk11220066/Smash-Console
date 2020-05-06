@@ -1084,9 +1084,11 @@ void TimeoutCommand::execute() {
         smash->jobs.setAlarmSignal();
         return;
     }
+    /*
     if ((innerCommand->cmd_line.find_first_not_of(' ') > 5) && (_isBackgroundComamnd(innerCommand->cmd_line))) {
         innerCommand->cmd_line = innerCommand->cmd_line.substr(0, innerCommand->cmd_line.size() - 1);
     }
+     */
     //in case of external command
     innerCommand->execute();
 }
