@@ -32,7 +32,7 @@ const std::string WHITESPACE = " \n\r\t\f\v";
 
 
 #ifndef NDEBUG
-#define DEBUG_PRINT(err_msg) cerr << "DEBUG: " << err_msg << endl
+#define DEBUG_PRINT(err_msg) /*cerr << "DEBUG: " << err_msg << endl*/
 #else
 #define DEBUG_PRINT(err_msg)
 #endif
@@ -257,7 +257,7 @@ void SmallShell::RemoveLateProcesses() {
 
     if (!::sendSignal(targetPcb, SIGKILL)) {
         //DEBUG_PRINT("Tried killing but failed");
-        return; //TODO: throw syscallexception
+        return;
     }
 
     jobs.timed_processes.erase(jobs.timed_processes.begin());

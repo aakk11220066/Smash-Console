@@ -17,7 +17,7 @@
 #define HISTORY_MAX_RECORDS (50)
 
 #ifndef NDEBUG
-#define DEBUG_PRINT(err_msg) std::cerr << "DEBUG: " << err_msg << std::endl
+#define DEBUG_PRINT(err_msg) /*std::cerr << "DEBUG: " << err_msg << std::endl*/
 #else
 #define DEBUG_PRINT(err_msg)
 #endif
