@@ -1064,6 +1064,7 @@ TimeoutCommand::TimeoutCommand(string cmd_line, SmallShell *smash) : Command(cmd
         throw SmashExceptions::InvalidArgumentsException("timeout");
     inner_cmd_line = trimmed_cmd.substr(trimmed_cmd.find_first_of(str_number) + str_number.length() + 1,
                                         trimmed_cmd.length() + 1);
+
     innerCommand = smash->CreateCommand(inner_cmd_line);
     innerCommand->isTimeOut = true;
     //set cmd_line for inner command to include 'timeout' in string
@@ -1082,6 +1083,9 @@ void TimeoutCommand::execute() {
         smash->jobs.addTimedProcess(UNINITIALIZED_JOB_ID, UNINITIALIZED_JOB_ID, COMMAND_UNPRINT, waitNumber);
         smash->jobs.setAlarmSignal();
         return;
+    }
+    if ((innerCommand->cmd_line.find_first_not_of(' ') > 5) && (_isBackgroundComamnd(innerCommand->cmd_line))) {
+        innerCommand->cmd_line = innerCommand->cmd_line.substr(0, innerCommand->cmd_line.size() - 1);
     }
     //in case of external command
     innerCommand->execute();
