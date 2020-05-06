@@ -249,7 +249,7 @@ TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
             return &timed_pcb;
             }
         }
-    handling background command
+    //handling background command
     if (j_id != UNINITIALIZED_JOB_ID) {
         jobs.removeFinishedJobs();
         ProcessControlBlock *pcb = jobs.getJobById(j_id);
