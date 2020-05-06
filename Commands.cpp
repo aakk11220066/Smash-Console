@@ -50,7 +50,9 @@ const int NO_OPTIONS = 0;
 /// \return true if succeeded, false if failed to send signal
 
 bool sendSignal(const ProcessControlBlock& pcb, signal_t sig_num, errno_t* errCodeReturned) {
-    bool result = (killpg(pcb.getProcessGroupId(), sig_num) >= 0);
+    int res1 = killpg(pcb.getProcessGroupId(), sig_num);
+    //cout << "res1 = " << res1 << ", error code" << *errCodeReturned << endl;
+    bool result = (res1 >= 0);
     if (errCodeReturned) *errCodeReturned = errno;
     return result;
 }
@@ -236,19 +238,23 @@ TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
             pid_t pid = timed_pcb.getProcessId();
             // in case of built-in command
             if (pid == UNINITIALIZED_JOB_ID) return &timed_pcb;
+            /*
             //in case of background command
             if (timed_pcb.getIsBackground()) {
-                job_id_t j_id = timed_pcb.getJobId();
-                ProcessControlBlock *pcb = jobs.getJobById(j_id);
+                job_id_t job_id = timed_pcb.getJobId();
+                ProcessControlBlock *pcb = jobs.getJobById(job_id);
                 if (!pcb) return nullptr;
                 else return &timed_pcb;
             }
+             */
             if(kill(timed_pcb.getProcessId(),0) != 0) return nullptr;
             // in case background command already finished
             if (waitpid(timed_pcb.getProcessId(), nullptr, WNOHANG)<0) {
                 throw SmashExceptions::SyscallException("waitpid");
             }
-            if (!::sendSignal(timed_pcb, SIGKILL)) return nullptr;
+            if (!::sendSignal(timed_pcb, SIGKILL)) {
+                return nullptr;
+            }
             //shouldn't reach here
             return &timed_pcb;
         }
