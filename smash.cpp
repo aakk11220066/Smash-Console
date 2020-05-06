@@ -59,20 +59,15 @@ namespace SignalHandlers {
 
         //send SIGKILL
         // i marked built-in command with " " as their command line
-        if (lateProcess && lateProcess->getCreatingCommand() != "cmd not to print") {
-            //AKIVA: use ::sendSignal instead of kill to send actionable signals
-            try{
-                ::sendSignal(*lateProcess, SIGKILL);
-            } catch (SmashExceptions::SyscallException& error){
-                cerr << error.what() << endl;
-            }
+        if (lateProcess) {
             cout << "smash: " << lateProcess->getCreatingCommand() << " timed out!" << endl;
         }
-            // general remove from job list
-            shell->RemoveLateProcesses();
-            //set signal alarm for next process in the list
-            shell->jobs.setAlarmSignal();
-        }
+
+        // general remove from job list
+        shell->RemoveLateProcesses();
+        //set signal alarm for next process in the list
+        shell->jobs.setAlarmSignal();
+    }
 }
 
 int main(int argc, char *argv[]) {

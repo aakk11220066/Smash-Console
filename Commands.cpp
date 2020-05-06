@@ -229,77 +229,37 @@ std::unique_ptr<Command> SmallShell::CreateCommand(string cmd_line) {
 
 TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
 {
-    job_id_t j_id = UNINITIALIZED_JOB_ID;
-    TimedProcessControlBlock *tmp = nullptr;
+    jobs.removeFinishedJobs();
     for (TimedProcessControlBlock& timed_pcb: jobs.timed_processes) {
 
         if (difftime(time(nullptr), timed_pcb.getAbortTime()) == 0) {
             pid_t pid = timed_pcb.getProcessId();
             // in case of built-in command
-            if (pid == UNINITIALIZED_JOB_ID) return &timed_pcb;
-            //in case of background command
-            if (timed_pcb.getIsBackground()) {
-                job_id_t j_id = timed_pcb.getJobId();
-                tmp = &timed_pcb;
-                break;
+            if (pid == UNINITIALIZED_JOB_ID) return nullptr;
+
+            job_id_t jobId = timed_pcb.getJobId();
+            if (!jobs.getJobById(jobId)) {
+                //DEBUG_PRINT("job already killed by removeFinishedJobs");
+                return nullptr;
             }
-            if(kill(timed_pcb.getProcessId(),0) != 0) return nullptr;
-            // in case external command already finished
-            if (waitpid(timed_pcb.getProcessId(), nullptr, WNOHANG)<0) {
-                throw SmashExceptions::SyscallException("waitpid");
-            }
-            if (!::sendSignal(timed_pcb, SIGKILL)) return nullptr;
-            //shouldn't reach here
-            return &timed_pcb;
+            else {
+                return &timed_pcb;
             }
         }
-    //handling background command
-    if (j_id != UNINITIALIZED_JOB_ID) {
-        jobs.removeFinishedJobs();
-        ProcessControlBlock *pcb = jobs.getJobById(j_id);
-        if (!pcb) return nullptr;
-        else return tmp;
     }
     return nullptr;
 }
 
 void SmallShell::RemoveLateProcesses() {
-    //remove from list all jobs who have just expired
-    bool isBackground = false;
-    job_id_t j_id = UNINITIALIZED_JOB_ID;
-    auto it = jobs.timed_processes.begin();
-    while (it != jobs.timed_processes.end()) {
-        if (difftime(time(nullptr), it->getAbortTime()) == 0) {
-            if (it->getIsBackground()) {
-                isBackground = true;
-                j_id = it->getJobId();
-            }
-            it = jobs.timed_processes.erase(it);
-            //return;
-        } else {
-            ++it;
-        }
-    }
-    if (isBackground && (j_id != UNINITIALIZED_JOB_ID)) jobs.removeJobById(j_id);
-}
-    /*
-             for (auto it = smash->jobs.timed_processes.begin(); it != smash->jobs.timed_processes.end(); ++it) {
-        if (!*it) continue; //AKIVA - to prevent segmentation faults
-        if (jobId == (*it)->getJobId()) smash->jobs.timed_processes.erase(it);
-    }
-    //cout << pid << endl << pcb->getProcessId() << endl;
-    if (difftime(time(nullptr), timed_pcb.getAbortTime()) == 0) {
-        jobs.timed_processes.remove(timed_pcb);
-        // erase from map
-        jobs.removeJobById(timed_pcb.getJobId());
-        continue;
+    TimedProcessControlBlock targetPcb = *(jobs.timed_processes.begin());
+
+    if (!::sendSignal(targetPcb, SIGKILL)) {
+        //DEBUG_PRINT("Tried killing but failed");
+        return; //TODO: throw syscallexception
     }
 
-    //}
-    //sort list after deletion for the next alarm signal
-    //jobs.timed_processes.sort();
+    jobs.timed_processes.erase(jobs.timed_processes.begin());
 }
-*/
 
 void SmallShell::executeCommand(string cmd_line) {
     containedExecute(containedBuild(cmd_line));
@@ -617,10 +577,12 @@ void JobsManager::addTimedProcess(const job_id_t jobId,
 
 void JobsManager::setAlarmSignal(){
     if (timed_processes.empty()) return;
+    //if (!timed_processes.empty()) DEBUG_PRINT("timed_processes is not empty");
     assert(!timed_processes.empty());
     timed_processes.sort();
     int alarmNumber = (int)difftime(timed_processes.begin()->getAbortTime(),time(nullptr));
-    assert(alarmNumber > 0);
+    //assert(alarmNumber > 0);
+    //DEBUG
     alarm(alarmNumber);
 }
 

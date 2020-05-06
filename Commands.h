@@ -121,7 +121,6 @@ public:
     bool containedExecute(const unique_ptr<Command> &cmd);
 
 public:
-    void RemoveLateProcess(const pid_t); //ROI
     TimedProcessControlBlock *getLateProcess(); //ROI
     void RemoveLateProcesses(); //ROI
     const std::string &getLastPwd() const;
