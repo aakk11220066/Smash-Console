@@ -232,14 +232,20 @@ TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
             pid_t pid = timed_pcb.getProcessId();
             // in case of built-in command
             if (pid == UNINITIALIZED_JOB_ID) return &timed_pcb;
-
+            //in case of background command
+            if (timed_pcb.getIsBackground()) {
+                job_id_t j_id = timed_pcb.getJobId();
+                ProcessControlBlock *pcb = jobs.getJobById(j_id);
+                if (!pcb) return nullptr;
+                else return &timed_pcb;
+            }
             if(kill(timed_pcb.getProcessId(),0) != 0) return nullptr;
             // in case background command already finished
             if (waitpid(timed_pcb.getProcessId(), nullptr, WNOHANG)<0) {
                 throw SmashExceptions::SyscallException("waitpid");
             }
             if (!::sendSignal(timed_pcb, SIGKILL)) return nullptr;
-            //background command un-finished
+            //shouldn't reach here
             return &timed_pcb;
             }
         }
