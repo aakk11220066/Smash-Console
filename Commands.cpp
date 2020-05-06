@@ -240,7 +240,7 @@ TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
                 break;
             }
             if(kill(timed_pcb.getProcessId(),0) != 0) return nullptr;
-            // in case background command already finished
+            // in case external command already finished
             if (waitpid(timed_pcb.getProcessId(), nullptr, WNOHANG)<0) {
                 throw SmashExceptions::SyscallException("waitpid");
             }
@@ -249,6 +249,7 @@ TimedProcessControlBlock *SmallShell::getLateProcess() //ROI
             return &timed_pcb;
             }
         }
+    handling background command
     if (j_id != UNINITIALIZED_JOB_ID) {
         jobs.removeFinishedJobs();
         ProcessControlBlock *pcb = jobs.getJobById(j_id);
